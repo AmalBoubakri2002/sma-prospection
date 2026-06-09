@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16-alpine
@@ -10,14 +8,15 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sma_password}
       POSTGRES_DB: ${POSTGRES_DB:-sma_db}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sma_user} -d ${POSTGRES_DB:-sma_db}"]
-      interval: 10s
+      test: ["CMD-SHELL", "psql -U ${POSTGRES_USER:-sma_user} -d ${POSTGRES_DB:-sma_db} -c 'SELECT 1' > /dev/null 2>&1 || exit 1"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
 volumes:
   postgres_data:

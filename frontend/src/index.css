@@ -1,14 +1,201 @@
-* {
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  background-color: #f5f5f5;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: #f0f4f8;
+  color: #1e2d45;
+  line-height: 1.5;
 }
 
 #root {
   min-height: 100vh;
+}
+
+/* ─── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar          { width: 6px; height: 6px; }
+::-webkit-scrollbar-track    { background: transparent; }
+::-webkit-scrollbar-thumb    { background: #c8d4e3; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #a8bbd4; }
+
+/* ─── Sidebar nav items (AdminLayout) ─────────────────────── */
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 14px;
+  font-weight: 400;
+  border-left: 3px solid transparent;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+  outline: none;
+  margin-bottom: 2px;
+}
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.sidebar-item:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.3);
+  outline-offset: -2px;
+}
+.sidebar-item.is-active {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 600;
+  border-left-color: #a5b4fc;
+}
+.sidebar-item.is-collapsed {
+  justify-content: center;
+  padding: 10px 0;
+}
+
+/* ─── Sidebar bottom actions ───────────────────────────────── */
+.sidebar-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  user-select: none;
+  outline: none;
+  transition: background 0.15s, color 0.15s;
+  margin-bottom: 2px;
+}
+.sidebar-action:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.3);
+  outline-offset: -2px;
+}
+.sidebar-action.logout  { color: rgba(255, 255, 255, 0.5); }
+.sidebar-action.logout:hover  { background: rgba(239, 68, 68, 0.15); color: #fca5a5; }
+.sidebar-action.collapse { color: rgba(255, 255, 255, 0.38); }
+.sidebar-action.collapse:hover { background: rgba(255, 255, 255, 0.05); color: rgba(255,255,255,0.7); }
+.sidebar-action.is-collapsed { justify-content: center; padding: 10px 0; }
+
+/* ─── Top navbar links (CommercialLayout) ─────────────────── */
+.top-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  height: 36px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #6b87b0;
+  cursor: pointer;
+  border-radius: 7px;
+  position: relative;
+  transition: color 0.15s, background 0.15s;
+  user-select: none;
+  outline: none;
+  white-space: nowrap;
+}
+.top-nav-link:hover {
+  color: #1b3a6b;
+  background: #f0f4f8;
+}
+.top-nav-link:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 2px;
+}
+.top-nav-link.is-active {
+  color: #1b3a6b;
+  font-weight: 600;
+  background: #edf1f9;
+}
+.top-nav-link.is-active::after {
+  content: '';
+  position: absolute;
+  bottom: -14px;
+  left: 12px;
+  right: 12px;
+  height: 2px;
+  background: #1b3a6b;
+  border-radius: 2px 2px 0 0;
+}
+
+/* ─── Card interactive hover ──────────────────────────────── */
+.card-lift {
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+}
+.card-lift:hover {
+  box-shadow: 0 6px 28px rgba(27, 58, 107, 0.13) !important;
+  transform: translateY(-2px);
+}
+
+/* ─── Page layout ─────────────────────────────────────────── */
+.page-root {
+  padding: 36px 40px;
+  max-width: 1200px;
+}
+@media (max-width: 900px) {
+  .page-root { padding: 24px 20px; }
+}
+@media (max-width: 600px) {
+  .page-root { padding: 16px 12px; }
+}
+
+/* ─── Ant Design overrides (v5 CSS-in-JS safe) ────────────── */
+
+/* Table header: uppercase small caps */
+.ant-table-thead > tr > th,
+.ant-table-thead > tr > th.ant-table-cell {
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.6px !important;
+  color: #8097b8 !important;
+  background: #f5f8fc !important;
+  padding: 10px 16px !important;
+}
+
+/* Table body rows */
+.ant-table-tbody > tr > td {
+  padding: 14px 16px !important;
+  border-color: #f0f4f8 !important;
+}
+.ant-table-tbody > tr:hover > td {
+  background: #f8fafd !important;
+}
+
+/* Remove Ant default tag border */
+.ant-tag { border: none !important; }
+
+/* Modal: tighter padding on mobile */
+@media (max-width: 600px) {
+  .ant-modal { margin: 8px !important; }
+}
+
+/* Pagination */
+.ant-pagination { margin-top: 16px !important; }
+
+/* Form item gap */
+.ant-form-item { margin-bottom: 20px !important; }
+.ant-form-item-label > label {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #1e2d45 !important;
 }
