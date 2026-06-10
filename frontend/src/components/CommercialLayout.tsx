@@ -3,9 +3,9 @@ import { Avatar, Dropdown, Badge } from "antd";
 import type { MenuProps } from "antd";
 import {
   DashboardOutlined,
+  RocketOutlined,
   TeamOutlined,
   CalendarOutlined,
-  BarChartOutlined,
   LogoutOutlined,
   BellOutlined,
   UserOutlined,
@@ -23,9 +23,9 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { key: "dashboard", label: "Tableau de bord", icon: <DashboardOutlined />, path: "/commercial" },
+  { key: "campagnes", label: "Campagnes",        icon: <RocketOutlined />,    path: "/commercial/campagnes/nouvelle" },
   { key: "prospects", label: "Prospects",        icon: <TeamOutlined />,      path: "/commercial/prospects" },
-  { key: "agenda",    label: "Agenda",            icon: <CalendarOutlined />,  path: "/commercial/agenda" },
-  { key: "stats",     label: "Statistiques",      icon: <BarChartOutlined />,  path: "/commercial/stats" },
+  { key: "agenda",    label: "Agenda",           icon: <CalendarOutlined />,  path: "/commercial/agenda" },
 ];
 
 function ProspectLogo() {
@@ -49,16 +49,26 @@ function ProspectLogo() {
   );
 }
 
+function getDisplayName(u: ReturnType<typeof useAuthStore.getState>["user"]): string {
+  if (!u) return "";
+  if (u.full_name && !/^\d+$/.test(u.full_name.trim())) return u.full_name.trim();
+  return u.email?.split("@")[0] ?? "";
+}
+
+function getAvatarChar(u: ReturnType<typeof useAuthStore.getState>["user"]): string {
+  return getDisplayName(u)[0]?.toUpperCase() ?? "C";
+}
+
 export default function CommercialLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, clearAuth } = useAuthStore();
 
-  const activeKey = navItems.find((item) =>
-    item.path === "/commercial"
-      ? location.pathname === "/commercial"
-      : location.pathname.startsWith(item.path)
-  )?.key;
+  const activeKey = navItems.find((item) => {
+    if (item.path === "/commercial") return location.pathname === "/commercial";
+    if (item.key === "campagnes") return location.pathname.startsWith("/commercial/campagnes");
+    return location.pathname.startsWith(item.path);
+  })?.key;
 
   const handleLogout = () => { clearAuth(); navigate("/login"); };
 
@@ -69,7 +79,7 @@ export default function CommercialLayout() {
       label: (
         <div>
           <div style={{ fontWeight: 600, color: C.text, fontSize: 13 }}>
-            {user?.full_name ?? user?.email?.split("@")[0]}
+            {getDisplayName(user)}
           </div>
           <div style={{ fontSize: 11, color: C.textMuted }}>{user?.email}</div>
         </div>
@@ -220,10 +230,10 @@ export default function CommercialLayout() {
                 size={28}
                 style={{ background: `linear-gradient(135deg, ${C.navy}, ${C.indigo})`, fontSize: 12, fontWeight: 700, flexShrink: 0 }}
               >
-                {(user?.full_name ?? user?.email ?? "C")[0].toUpperCase()}
+                {getAvatarChar(user)}
               </Avatar>
               <span style={{ fontSize: 13, fontWeight: 600, color: C.navy, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {user?.full_name ?? user?.email?.split("@")[0]}
+                {getDisplayName(user)}
               </span>
               <DownOutlined style={{ fontSize: 10, color: C.textMuted }} aria-hidden="true" />
             </button>

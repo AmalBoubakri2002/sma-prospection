@@ -6,6 +6,7 @@ import AdminDashboardPage from "@/pages/admin/DashboardPage";
 import UsersPage from "@/pages/admin/UsersPage";
 import CommercialLayout from "@/components/CommercialLayout";
 import CommercialDashboardPage from "@/pages/commercial/DashboardPage";
+import NewCampaignPage from "@/pages/commercial/NewCampaignPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 
 function RootRedirect() {
@@ -30,6 +31,7 @@ export default function App() {
         }
       >
         <Route index element={<CommercialDashboardPage />} />
+        <Route path="campagnes/nouvelle" element={<NewCampaignPage />} />
       </Route>
 
       {/* Admin */}

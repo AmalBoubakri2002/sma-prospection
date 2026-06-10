@@ -149,7 +149,7 @@ body {
 /* ─── Page layout ─────────────────────────────────────────── */
 .page-root {
   padding: 36px 40px;
-  max-width: 1200px;
+  width: 100%;
 }
 @media (max-width: 900px) {
   .page-root { padding: 24px 20px; }
