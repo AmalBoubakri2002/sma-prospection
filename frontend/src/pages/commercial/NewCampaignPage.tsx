@@ -5,6 +5,7 @@ import {
   CheckOutlined, ArrowLeftOutlined, ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
+import api from "@/utils/api";
 import { C, S, R } from "@/styles/tokens";
 
 const { Title, Text } = Typography;
@@ -147,10 +148,23 @@ export default function NewCampaignPage() {
     if (!sizes.length)     { message.warning("Sélectionnez au moins une taille.");   return; }
     if (!functions.length) { message.warning("Sélectionnez au moins une fonction."); return; }
     setLaunching(true);
-    await new Promise(r => setTimeout(r, 1400));
-    setLaunching(false);
-    message.success("Campagne lancée — l'orchestrateur LangGraph est en cours d'exécution.");
-    navigate("/commercial");
+    try {
+      await api.post("/campaigns/", {
+        sector,
+        country,
+        sizes,
+        functions,
+        min_score: minScore,
+        sources,
+        estimated_prospects: estimate,
+      });
+      message.success("Campagne créée avec succès !");
+      navigate("/commercial");
+    } catch {
+      message.error("Erreur lors de la création de la campagne.");
+    } finally {
+      setLaunching(false);
+    }
   };
 
   const sectorLabel  = SECTORS.find(s  => s.value === sector)?.label.split(" ")[0] ?? "—";

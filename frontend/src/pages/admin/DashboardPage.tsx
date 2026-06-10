@@ -169,61 +169,7 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            {/* Quick actions */}
-            <div
-              style={{
-                background:   C.surface,
-                borderRadius: R.card,
-                padding:      "22px 24px",
-                border:       `1px solid ${C.border}`,
-                boxShadow:    S.card,
-                flex:         1,
-                minWidth:     240,
-              }}
-            >
-              <Text style={{ fontWeight: 700, color: C.navy, fontSize: 14, display: "block", marginBottom: 16 }}>
-                Actions rapides
-              </Text>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {[
-                  { label: "Créer un compte commercial", path: "/admin/commerciaux" },
-                  { label: "Gérer les commerciaux",      path: "/admin/commerciaux" },
-                ].map((action) => (
-                  <div
-                    key={action.label}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => navigate(action.path)}
-                    onKeyDown={(e) => e.key === "Enter" && navigate(action.path)}
-                    style={{
-                      display:     "flex",
-                      alignItems:  "center",
-                      justifyContent: "space-between",
-                      padding:     "10px 14px",
-                      borderRadius: R.md,
-                      border:      `1.5px solid ${C.border}`,
-                      cursor:      "pointer",
-                      color:       C.navy,
-                      fontSize:    13,
-                      fontWeight:  500,
-                      transition:  "border-color 0.15s, background 0.15s",
-                      outline:     "none",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLDivElement).style.borderColor = C.borderMd;
-                      (e.currentTarget as HTMLDivElement).style.background  = C.bg;
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLDivElement).style.borderColor = C.border;
-                      (e.currentTarget as HTMLDivElement).style.background  = "transparent";
-                    }}
-                  >
-                    {action.label}
-                    <ArrowRightOutlined style={{ fontSize: 11, color: C.textMuted }} />
-                  </div>
-                ))}
-              </div>
-            </div>
+           
 
           </div>
         </>

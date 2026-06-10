@@ -1,6 +1,6 @@
-# SMA Prospection — Système Multi-Agent de Prospection Commerciale
+# SMA Prospection — ProspectAI
 
-Plateforme intelligente de prospection B2B intégrant une architecture multi-agent (LangGraph) avec un CRM Odoo 17.
+Plateforme de prospection B2B avec orchestration multi-agent (LangGraph).
 
 ## Stack
 
@@ -8,12 +8,25 @@ Plateforme intelligente de prospection B2B intégrant une architecture multi-age
 |---|---|
 | Frontend | React 18 + TypeScript + Ant Design + Vite |
 | Backend | FastAPI + Python 3.11 + SQLAlchemy (async) |
-| Orchestration | LangGraph + LangSmith |
-| LLM | Mistral API / Ollama (local fallback) |
-| Scoring ML | XGBoost 2.0 + SHAP + MLflow |
 | Base de données | PostgreSQL 16 |
-| CRM | Odoo 17 Community |
-| DevOps | Docker Compose + GitHub Actions |
+| Agents IA | LangGraph + Mistral API *(à venir)* |
+| DevOps | Docker Compose |
+
+## État du projet
+
+### Implémenté
+- Authentification JWT (login / token / profil)
+- Gestion des rôles : `admin` et `commercial`
+- CRUD commerciaux (admin)
+- Dashboard admin (stats équipe)
+- Dashboard commercial (KPIs, campagnes)
+- Formulaire de création de campagne (UI)
+
+### À venir
+- Agent Veille (SIRENE + LinkedIn)
+- Agent Scoring (XGBoost + SHAP)
+- Agent Rédaction (Mistral)
+- Intégration CRM Odoo 17
 
 ## Démarrage rapide
 
@@ -22,37 +35,31 @@ Plateforme intelligente de prospection B2B intégrant une architecture multi-age
 - Docker & Docker Compose
 - Node.js 20+
 - Python 3.11+
-- [uv](https://github.com/astral-sh/uv) (gestionnaire de packages Python)
+- [uv](https://github.com/astral-sh/uv)
 
-### 1. Cloner & configurer
+### 1. Configuration
 
 ```bash
-git clone https://github.com/amalboubakri/sma-prospection.git
-cd sma-prospection
 cp .env.example .env
-# Remplir les variables dans .env (Mistral API key, etc.)
+# Remplir les variables dans .env
 ```
 
-### 2. Démarrer PostgreSQL
+### 2. Base de données
 
 ```bash
 docker compose up -d
-# Vérifie que postgres est healthy :
-docker compose ps
 ```
 
 ### 3. Backend
 
 ```bash
 cd backend
-uv venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
-alembic upgrade head                   # Appliquer les migrations
 uvicorn app.main:app --reload --port 8000
 ```
 
-API disponible sur `http://localhost:8000`
-Docs Swagger : `http://localhost:8000/docs`
+API : `http://localhost:8000` · Swagger : `http://localhost:8000/docs`
 
 ### 4. Frontend
 
@@ -62,39 +69,33 @@ npm install
 npm run dev
 ```
 
-App disponible sur `http://localhost:5173`
+App : `http://localhost:5173`
 
-## Structure du projet
+Compte admin par défaut : `admin@prospectai.fr` / `Admin1234!`
+
+## Structure
 
 ```
 sma-prospection/
-├── frontend/               # React 18 + TS + Ant Design
-│   └── src/
-│       ├── pages/          # Dashboard, Campaigns, Leads, etc.
-│       ├── components/     # Composants réutilisables
-│       ├── hooks/          # Custom hooks
-│       ├── store/          # État global (Zustand)
-│       ├── types/          # Types TypeScript
-│       └── utils/          # Helpers
-├── backend/                # FastAPI + Python
-│   └── app/
-│       ├── api/v1/         # Routes API
-│       ├── agents/         # Agents LangGraph (Veille, Scoring, Rédaction, CRM)
-│       ├── models/         # Modèles SQLAlchemy
-│       ├── schemas/        # Schemas Pydantic
-│       ├── core/           # Config, sécurité JWT
-│       ├── db/             # Session DB, base
-│       └── services/       # Logique métier
-├── docker-compose.yml      # PostgreSQL uniquement (dev)
-├── .env.example
-└── .github/workflows/ci.yml
+├── frontend/src/
+│   ├── pages/
+│   │   ├── LoginPage.tsx
+│   │   ├── admin/          # Dashboard, Commerciaux
+│   │   └── commercial/     # Dashboard, NewCampaignPage
+│   ├── components/         # AdminLayout, CommercialLayout, ProtectedRoute
+│   ├── stores/             # authStore (Zustand + persist)
+│   ├── utils/              # api.ts (axios + intercepteurs JWT)
+│   └── styles/             # tokens.ts (design system)
+├── backend/app/
+│   ├── api/v1/             # Routes auth + users
+│   ├── core/               # Config, sécurité JWT
+│   ├── db/                 # Session SQLAlchemy async
+│   ├── models/             # User
+│   ├── schemas/            # Pydantic (UserCreate, UserResponse, Token…)
+│   └── services/           # Logique métier utilisateurs
+├── docker-compose.yml      # PostgreSQL 16
+└── .env.example
 ```
-
-## Branches
-
-- `main` — production-ready
-- `develop` — intégration
-- `feat/<name>` — nouvelles fonctionnalités
 
 ## Auteure
 
