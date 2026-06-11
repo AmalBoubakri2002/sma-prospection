@@ -1,96 +1,66 @@
 import { useState } from "react";
-import { Typography, Select, Slider, Button, App } from "antd";
+import { Typography, Select, InputNumber, Button, App, Tag } from "antd";
 import {
-  AimOutlined, SettingOutlined, SearchOutlined,
-  CheckOutlined, ArrowLeftOutlined, ThunderboltOutlined,
+  AimOutlined, SearchOutlined,
+  ArrowLeftOutlined, ThunderboltOutlined, PlusOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import api from "@/utils/api";
 import { C, S, R } from "@/styles/tokens";
 
 const { Title, Text } = Typography;
-const { Option } = Select;
 
 // ─── Static data ──────────────────────────────────────────────────────────────
 
-const SECTORS = [
-  { value: "esn",        label: "ESN (Services Numériques)" },
-  { value: "industrie",  label: "Industrie" },
-  { value: "sante",      label: "Santé" },
-  { value: "finance",    label: "Finance / Banque" },
-  { value: "retail",     label: "Retail / Commerce" },
-  { value: "logistique", label: "Logistique" },
-  { value: "btp",        label: "BTP / Construction" },
-  { value: "energie",    label: "Énergie" },
+const NAF_CODES = [
+  { value: "62.01Z", label: "62.01Z — Programmation informatique" },
+  { value: "62.02A", label: "62.02A — Conseil en systèmes informatiques" },
+  { value: "62.03Z", label: "62.03Z — Exploitation de systèmes informatiques" },
+  { value: "62.09Z", label: "62.09Z — Autres activités informatiques" },
+  { value: "70.22Z", label: "70.22Z — Conseil pour les affaires" },
+  { value: "73.20Z", label: "73.20Z — Études de marché" },
+  { value: "64.19Z", label: "64.19Z — Banque et crédit" },
+  { value: "66.22Z", label: "66.22Z — Agents d'assurance" },
+  { value: "86.10Z", label: "86.10Z — Activités hospitalières" },
+  { value: "86.21Z", label: "86.21Z — Médecine générale" },
+  { value: "47.11B", label: "47.11B — Supermarchés" },
+  { value: "49.41A", label: "49.41A — Transport routier de marchandises" },
+  { value: "41.20A", label: "41.20A — Construction de maisons individuelles" },
+  { value: "43.21A", label: "43.21A — Travaux d'installation électrique" },
+  { value: "35.11Z", label: "35.11Z — Production d'électricité" },
+  { value: "28.11Z", label: "28.11Z — Fabrication de moteurs" },
 ];
 
-const COUNTRIES = [
-  { value: "france",     label: "France" },
-  { value: "belgique",   label: "Belgique" },
-  { value: "suisse",     label: "Suisse" },
-  { value: "luxembourg", label: "Luxembourg" },
-];
-
-const SIZES = [
-  { value: "1-10",    label: "1–10"    },
-  { value: "11-49",   label: "11–49"   },
-  { value: "50-200",  label: "50–200"  },
-  { value: "201-500", label: "201–500" },
-  { value: "500+",    label: "500+"    },
-];
-
-const FUNCTIONS = [
-  { value: "ceo",           label: "CEO"            },
-  { value: "dsi",           label: "DSI"            },
-  { value: "dir-commercial",label: "Dir. Commercial" },
-  { value: "drh",           label: "DRH"            },
-  { value: "cto",           label: "CTO"            },
-];
-
-const SOURCES = [
-  { value: "sirene",     label: "API SIRENE", sub: "~3 200 résultats", available: true,  base: 3200 },
-  { value: "linkedin",   label: "LinkedIn",   sub: "~6 800 résultats", available: true,  base: 6800 },
-  { value: "scraping",   label: "Web scraping", sub: "Désactivé",      available: false, base: 0    },
+const TRANCHES = [
+  { value: "11", label: "10–19" },
+  { value: "12", label: "20–49" },
+  { value: "21", label: "50–99" },
+  { value: "22", label: "100–199" },
+  { value: "31", label: "200–249" },
+  { value: "32", label: "250–499" },
+  { value: "41", label: "500–999" },
+  { value: "42", label: "1 000–1 999" },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getSizeLabel(sizes: string[]): string {
-  if (sizes.length === 0) return "—";
-  const indices = SIZES.map((s, i) => sizes.includes(s.value) ? i : -1).filter(i => i >= 0);
-  if (indices.length === 0) return "—";
-  const minIdx = indices[0];
-  const maxIdx = indices[indices.length - 1];
-  if (minIdx === maxIdx) return `${SIZES[minIdx].label} sal.`;
-  // Extract lower bound of first selected, upper bound of last selected
-  const minLabel = SIZES[minIdx].label;
-  const maxLabel = SIZES[maxIdx].label;
-  const lowerBound = minLabel.split("–")[0];
-  const upperBound = maxLabel.includes("–") ? maxLabel.split("–")[1] : maxLabel;
-  return `${lowerBound}–${upperBound} sal.`;
-}
-
-function getSourceLabel(sources: string[]): string {
-  const short: Record<string, string> = { sirene: "SIRENE", linkedin: "LI", scraping: "Web" };
-  return sources.map(s => short[s]).join(" + ") || "—";
-}
-
-function computeEstimate(sources: string[], sizes: string[], functions: string[]): number {
-  const total = SOURCES.filter(s => sources.includes(s.value)).reduce((acc, s) => acc + s.base, 0);
-  if (!total || !sizes.length || !functions.length) return 0;
-  const raw = total * (sizes.length / SIZES.length) * (functions.length / FUNCTIONS.length) * 0.2;
-  return Math.max(50, Math.round(raw / 50) * 50);
+function getTranchesLabel(selected: string[]): string {
+  if (!selected.length) return "—";
+  const ordered = TRANCHES.filter(t => selected.includes(t.value));
+  if (!ordered.length) return "—";
+  if (ordered.length === 1) return `${ordered[0].label} sal.`;
+  return `${ordered[0].label} – ${ordered[ordered.length - 1].label} sal.`;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionHeader({ icon, title }: { icon: React.ReactNode; title: string }) {
   return (
-    <div style={{ display:"flex", alignItems:"center", gap:9, marginBottom:20 }}>
-      <span style={{ fontSize:15, color:C.navy }}>{icon}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 20 }}>
+      <span style={{ fontSize: 15, color: C.navy }}>{icon}</span>
       <Text style={{
-        fontSize:11, fontWeight:700, letterSpacing:1.3,
-        textTransform:"uppercase", color:C.navy,
+        fontSize: 11, fontWeight: 700, letterSpacing: 1.3,
+        textTransform: "uppercase", color: C.navy,
       }}>
         {title}
       </Text>
@@ -105,18 +75,18 @@ function TogglePill({
     <button
       onClick={onClick}
       style={{
-        padding:      "6px 16px",
+        padding: "6px 16px",
         borderRadius: 99,
-        border:       `2px solid ${selected ? C.indigo : C.border}`,
-        background:   selected ? `${C.indigo}12` : "transparent",
-        color:        selected ? C.indigo : C.textMuted,
-        fontWeight:   selected ? 600 : 400,
-        fontSize:     13.5,
-        cursor:       "pointer",
-        transition:   "all 0.15s",
-        outline:      "none",
-        fontFamily:   "inherit",
-        lineHeight:   1.4,
+        border: `2px solid ${selected ? C.indigo : C.border}`,
+        background: selected ? `${C.indigo}12` : "transparent",
+        color: selected ? C.indigo : C.textMuted,
+        fontWeight: selected ? 600 : 400,
+        fontSize: 13.5,
+        cursor: "pointer",
+        transition: "all 0.15s",
+        outline: "none",
+        fontFamily: "inherit",
+        lineHeight: 1.4,
       }}
     >
       {label}
@@ -127,36 +97,41 @@ function TogglePill({
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function NewCampaignPage() {
-  const navigate       = useNavigate();
-  const { message }    = App.useApp();
+  const navigate    = useNavigate();
+  const { message } = App.useApp();
 
-  const [sector,    setSector]    = useState("esn");
-  const [country,   setCountry]   = useState("france");
-  const [sizes,     setSizes]     = useState<string[]>(["50-200", "201-500"]);
-  const [functions, setFunctions] = useState<string[]>(["ceo", "dsi", "dir-commercial"]);
-  const [minScore,  setMinScore]  = useState(70);
-  const [sources,   setSources]   = useState<string[]>(["sirene", "linkedin"]);
-  const [launching, setLaunching] = useState(false);
-
-  const estimate = computeEstimate(sources, sizes, functions);
+  const [codesNaf,          setCodesNaf]          = useState<string[]>(["62.01Z", "62.02A"]);
+  const [codesPostaux,      setCodesPostaux]       = useState<string[]>([]);
+  const [cpInput,           setCpInput]            = useState("");
+  const [tranchesEffectifs, setTranchesEffectifs]  = useState<string[]>(["12", "21"]);
+  const [quota,             setQuota]              = useState(50);
+  const [scoreMinimum,      setScoreMinimum]       = useState(0);
+  const [launching,         setLaunching]          = useState(false);
 
   const toggle = (list: string[], val: string, set: (v: string[]) => void) =>
     set(list.includes(val) ? list.filter(v => v !== val) : [...list, val]);
 
+  const addCodePostal = () => {
+    const cp = cpInput.trim();
+    if (/^\d{5}$/.test(cp) && !codesPostaux.includes(cp)) {
+      setCodesPostaux([...codesPostaux, cp]);
+    }
+    setCpInput("");
+  };
+
   const handleLaunch = async () => {
-    if (!sources.length)   { message.warning("Sélectionnez au moins une source.");   return; }
-    if (!sizes.length)     { message.warning("Sélectionnez au moins une taille.");   return; }
-    if (!functions.length) { message.warning("Sélectionnez au moins une fonction."); return; }
+    if (!codesNaf.length)          { message.warning("Sélectionnez au moins un code NAF.");         return; }
+    if (!codesPostaux.length)      { message.warning("Ajoutez au moins un code postal.");           return; }
+    if (!tranchesEffectifs.length) { message.warning("Sélectionnez au moins une tranche d'effectif."); return; }
     setLaunching(true);
     try {
       await api.post("/campaigns/", {
-        sector,
-        country,
-        sizes,
-        functions,
-        min_score: minScore,
-        sources,
-        estimated_prospects: estimate,
+        codes_naf:          codesNaf,
+        codes_postaux:      codesPostaux,
+        tranches_effectifs: tranchesEffectifs,
+        quota,
+        score_minimum:      scoreMinimum,
+        estimated_prospects: 0,
       });
       message.success("Campagne créée avec succès !");
       navigate("/commercial");
@@ -167,15 +142,12 @@ export default function NewCampaignPage() {
     }
   };
 
-  const sectorLabel  = SECTORS.find(s  => s.value === sector)?.label.split(" ")[0] ?? "—";
-  const countryLabel = COUNTRIES.find(c => c.value === country)?.label              ?? "—";
-
   const summaryRows = [
-    { key: "Secteur",    value: sectorLabel             },
-    { key: "Pays",       value: countryLabel            },
-    { key: "Taille",     value: getSizeLabel(sizes)     },
-    { key: "Score min.", value: `≥ ${minScore} / 100`   },
-    { key: "Sources",    value: getSourceLabel(sources) },
+    { key: "Codes NAF",     value: codesNaf.length ? `${codesNaf.length} code(s)` : "—" },
+    { key: "Zones",         value: codesPostaux.length ? codesPostaux.slice(0, 3).join(", ") + (codesPostaux.length > 3 ? "…" : "") : "—" },
+    { key: "Effectifs",     value: getTranchesLabel(tranchesEffectifs) },
+    { key: "Quota",         value: `${quota} prospects max` },
+    { key: "Score minimum", value: `${scoreMinimum} / 100` },
   ];
 
   const card: React.CSSProperties = {
@@ -195,198 +167,193 @@ export default function NewCampaignPage() {
         <button
           onClick={() => navigate("/commercial")}
           style={{
-            background:"none", border:"none", cursor:"pointer",
-            display:"flex", alignItems:"center", gap:6,
-            color:C.textMuted, fontSize:13, fontWeight:500,
-            padding:0, marginBottom:12, fontFamily:"inherit",
-            transition:"color 0.15s",
+            background: "none", border: "none", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+            color: C.textMuted, fontSize: 13, fontWeight: 500,
+            padding: 0, marginBottom: 12, fontFamily: "inherit",
+            transition: "color 0.15s",
           }}
           onMouseEnter={e => (e.currentTarget.style.color = C.navy)}
           onMouseLeave={e => (e.currentTarget.style.color = C.textMuted)}
         >
-          <ArrowLeftOutlined style={{ fontSize:12 }} />
+          <ArrowLeftOutlined style={{ fontSize: 12 }} />
           Retour au tableau de bord
         </button>
-        <Title level={3} style={{ margin:0, color:C.navy, fontWeight:800, lineHeight:1.2 }}>
+        <Title level={3} style={{ margin: 0, color: C.navy, fontWeight: 800, lineHeight: 1.2 }}>
           Nouvelle campagne
         </Title>
-        <Text style={{ color:C.textMuted, fontSize:14, marginTop:4, display:"block" }}>
-          Configurez les paramètres de ciblage pour lancer l'agent de prospection.
+        <Text style={{ color: C.textMuted, fontSize: 14, marginTop: 4, display: "block" }}>
+          Configurez les critères de ciblage SIRENE pour lancer la prospection.
         </Text>
       </div>
 
       {/* ── Two-column layout ─────────────────────────────────── */}
-      <div style={{ display:"flex", gap:20, alignItems:"flex-start", flexWrap:"wrap" }}>
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
 
         {/* ── Left : Form ───────────────────────────────────── */}
-        <div style={{ flex:"1 1 540px", minWidth:0 }}>
+        <div style={{ flex: "1 1 540px", minWidth: 0 }}>
 
-          {/* Section 1 — Ciblage */}
+          {/* Section 1 — Secteur d'activité */}
           <div style={card}>
-            <SectionHeader icon={<AimOutlined />} title="Qui cibler ?" />
+            <SectionHeader icon={<AimOutlined />} title="Secteur d'activité (codes NAF)" />
 
-            <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:22 }}>
-              <div style={{ flex:"1 1 220px" }}>
-                <Text style={{ fontSize:13, fontWeight:600, color:C.text, display:"block", marginBottom:7 }}>
-                  Secteur d'activité
-                </Text>
-                <Select value={sector} onChange={setSector} style={{ width:"100%" }} size="large">
-                  {SECTORS.map(s => <Option key={s.value} value={s.value}>{s.label}</Option>)}
-                </Select>
-              </div>
-              <div style={{ flex:"1 1 160px" }}>
-                <Text style={{ fontSize:13, fontWeight:600, color:C.text, display:"block", marginBottom:7 }}>
-                  Pays
-                </Text>
-                <Select value={country} onChange={setCountry} style={{ width:"100%" }} size="large">
-                  {COUNTRIES.map(c => <Option key={c.value} value={c.value}>{c.label}</Option>)}
-                </Select>
-              </div>
-            </div>
-
-            <div style={{ marginBottom:22 }}>
-              <Text style={{ fontSize:13, fontWeight:600, color:C.text, display:"block", marginBottom:10 }}>
-                Taille de l'entreprise (salariés)
-              </Text>
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                {SIZES.map(s => (
-                  <TogglePill
-                    key={s.value}
-                    label={s.label}
-                    selected={sizes.includes(s.value)}
-                    onClick={() => toggle(sizes, s.value, setSizes)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <Text style={{ fontSize:13, fontWeight:600, color:C.text, display:"block", marginBottom:10 }}>
-                Fonctions visées
-              </Text>
-              <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                {FUNCTIONS.map(f => (
-                  <TogglePill
-                    key={f.value}
-                    label={f.label}
-                    selected={functions.includes(f.value)}
-                    onClick={() => toggle(functions, f.value, setFunctions)}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Section 2 — Qualité */}
-          <div style={card}>
-            <SectionHeader icon={<SettingOutlined />} title="Paramètres de qualité" />
-
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10 }}>
-              <Text style={{ fontSize:13, fontWeight:600, color:C.text }}>Score minimum requis</Text>
-              <div style={{
-                background:C.navy, color:"#fff",
-                borderRadius:R.md, padding:"3px 14px",
-                fontSize:15, fontWeight:700, minWidth:42, textAlign:"center",
-              }}>
-                {minScore}
-              </div>
-            </div>
-
-            <Slider
-              value={minScore}
-              onChange={setMinScore}
-              min={0} max={100} step={5}
-              styles={{
-                track:  { background: C.navy },
-                handle: { borderColor: C.navy, boxShadow: `0 0 0 3px ${C.navy}22` },
-              }}
+            <Text style={{ fontSize: 13, fontWeight: 600, color: C.text, display: "block", marginBottom: 7 }}>
+              Codes NAF / APE
+            </Text>
+            <Select
+              mode="multiple"
+              allowClear
+              style={{ width: "100%" }}
+              size="large"
+              placeholder="Rechercher un code NAF…"
+              value={codesNaf}
+              onChange={setCodesNaf}
+              options={NAF_CODES}
+              optionFilterProp="label"
+              showSearch
             />
-            <div style={{ display:"flex", justifyContent:"space-between", marginTop:6 }}>
-              <Text style={{ fontSize:11, color:C.textFaint }}>0 — Large</Text>
-              <Text style={{ fontSize:11, color:C.textFaint }}>100 — Sélectif</Text>
-            </div>
+            <Text style={{ fontSize: 12, color: C.textFaint, marginTop: 6, display: "block" }}>
+              Source : champ <code>activitePrincipaleUniteLegale</code> — API SIRENE
+            </Text>
           </div>
 
-          {/* Section 3 — Sources */}
+          {/* Section 2 — Zone géographique */}
           <div style={card}>
-            <SectionHeader icon={<SearchOutlined />} title="Sources — Agent Veille" />
+            <SectionHeader icon={<SearchOutlined />} title="Zone géographique (codes postaux)" />
 
-            <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
-              {SOURCES.map(src => {
-                const active = sources.includes(src.value) && src.available;
-                return (
-                  <div
-                    key={src.value}
-                    onClick={() => src.available && toggle(sources, src.value, setSources)}
-                    style={{
-                      flex:         "1 1 140px",
-                      border:       `2px solid ${active ? C.navy : C.border}`,
-                      borderRadius: R.lg,
-                      padding:      "14px 16px",
-                      cursor:       src.available ? "pointer" : "not-allowed",
-                      background:   active ? `${C.navy}07` : "transparent",
-                      opacity:      src.available ? 1 : 0.45,
-                      position:     "relative",
-                      transition:   "all 0.15s",
-                    }}
-                    onMouseEnter={e => { if (src.available && !active) (e.currentTarget as HTMLDivElement).style.borderColor = C.borderMd; }}
-                    onMouseLeave={e => { if (src.available && !active) (e.currentTarget as HTMLDivElement).style.borderColor = C.border; }}
-                  >
-                    {active && (
-                      <div style={{
-                        position:"absolute", top:8, right:8,
-                        width:18, height:18, borderRadius:"50%",
-                        background:C.navy,
-                        display:"flex", alignItems:"center", justifyContent:"center",
-                        fontSize:9, color:"#fff",
-                      }}>
-                        <CheckOutlined />
-                      </div>
-                    )}
-                    <Text style={{ display:"block", fontWeight:700, color:src.available ? C.navy : C.textMuted, fontSize:14, marginBottom:4 }}>
-                      {src.label}
-                    </Text>
-                    <Text style={{ fontSize:12, color:src.available ? C.textMuted : C.textFaint }}>
-                      {src.sub}
-                    </Text>
-                  </div>
-                );
-              })}
+            <Text style={{ fontSize: 13, fontWeight: 600, color: C.text, display: "block", marginBottom: 7 }}>
+              Codes postaux (5 chiffres)
+            </Text>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              <input
+                value={cpInput}
+                onChange={e => setCpInput(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addCodePostal()}
+                placeholder="ex : 75008"
+                maxLength={5}
+                style={{
+                  flex: 1, height: 40, borderRadius: R.md,
+                  border: `1px solid ${C.border}`, padding: "0 12px",
+                  fontSize: 14, fontFamily: "inherit", outline: "none",
+                  color: C.text, background: C.surface,
+                }}
+              />
+              <Button icon={<PlusOutlined />} onClick={addCodePostal} size="large">
+                Ajouter
+              </Button>
+            </div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {codesPostaux.map(cp => (
+                <Tag
+                  key={cp}
+                  closable
+                  onClose={() => setCodesPostaux(codesPostaux.filter(c => c !== cp))}
+                  style={{ fontSize: 13, padding: "3px 10px" }}
+                >
+                  {cp}
+                </Tag>
+              ))}
+              {!codesPostaux.length && (
+                <Text style={{ fontSize: 12, color: C.textFaint }}>Aucun code postal ajouté</Text>
+              )}
+            </div>
+            <Text style={{ fontSize: 12, color: C.textFaint, marginTop: 8, display: "block" }}>
+              Source : champ <code>codePostalEtablissement</code> — API SIRENE
+            </Text>
+          </div>
+
+          {/* Section 3 — Taille */}
+          <div style={card}>
+            <SectionHeader icon={<AimOutlined />} title="Taille de l'entreprise (salariés)" />
+
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+              {TRANCHES.map(t => (
+                <TogglePill
+                  key={t.value}
+                  label={t.label}
+                  selected={tranchesEffectifs.includes(t.value)}
+                  onClick={() => toggle(tranchesEffectifs, t.value, setTranchesEffectifs)}
+                />
+              ))}
+            </div>
+            <Text style={{ fontSize: 12, color: C.textFaint, marginTop: 4, display: "block" }}>
+              Source : champ <code>trancheEffectifsEtablissement</code> — API SIRENE
+            </Text>
+          </div>
+
+          {/* Section 4 — Quota */}
+          <div style={card}>
+            <SectionHeader icon={<SearchOutlined />} title="Quota de prospects" />
+
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <Text style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                Nombre maximum de prospects à collecter
+              </Text>
+              <InputNumber
+                min={1} max={500} step={10}
+                value={quota}
+                onChange={v => setQuota(v ?? 50)}
+                size="large"
+                style={{ width: 110 }}
+              />
             </div>
           </div>
+
+          {/* Section 5 — Score minimum */}
+          <div style={card}>
+            <SectionHeader icon={<AimOutlined />} title="Score minimum de qualification" />
+
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <Text style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
+                Score minimum requis pour retenir un prospect
+              </Text>
+              <InputNumber
+                min={0} max={100} step={5}
+                value={scoreMinimum}
+                onChange={v => setScoreMinimum(v ?? 0)}
+                size="large"
+                style={{ width: 110 }}
+                formatter={v => `${v} / 100`}
+                parser={v => Number(v?.replace(" / 100", "") ?? 0)}
+              />
+            </div>
+            <Text style={{ fontSize: 12, color: C.textFaint, marginTop: 8, display: "block" }}>
+              Seuls les prospects avec un score ≥ à cette valeur seront conservés.
+            </Text>
+          </div>
+
         </div>
 
         {/* ── Right : Summary panel ─────────────────────────── */}
-        <div style={{ flex:"0 0 256px", position:"sticky", top:80, minWidth:220 }}>
+        <div style={{ flex: "0 0 256px", position: "sticky", top: 80, minWidth: 220 }}>
           <div style={{
-            background: C.navy,
+            background:   C.navy,
             borderRadius: R.card,
-            padding:     "24px 22px",
-            boxShadow:   "0 8px 32px rgba(27,58,107,0.28)",
+            padding:      "24px 22px",
+            boxShadow:    "0 8px 32px rgba(27,58,107,0.28)",
           }}>
-            <Text style={{ display:"block", fontWeight:800, color:"#fff", fontSize:16, marginBottom:18 }}>
+            <Text style={{ display: "block", fontWeight: 800, color: "#fff", fontSize: 16, marginBottom: 18 }}>
               Résumé
             </Text>
 
-            {/* Rows */}
-            <div style={{ marginBottom:18 }}>
+            <div style={{ marginBottom: 18 }}>
               {summaryRows.map((row, idx) => (
                 <div
                   key={row.key}
                   style={{
-                    display:       "flex",
-                    justifyContent:"space-between",
-                    alignItems:    "baseline",
-                    paddingBottom:  9,
-                    marginBottom:   9,
-                    borderBottom:  idx < summaryRows.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none",
+                    display:        "flex",
+                    justifyContent: "space-between",
+                    alignItems:     "baseline",
+                    paddingBottom:   9,
+                    marginBottom:    9,
+                    borderBottom:   idx < summaryRows.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none",
                   }}
                 >
-                  <Text style={{ fontSize:13, color:"rgba(255,255,255,0.48)" }}>{row.key}</Text>
+                  <Text style={{ fontSize: 13, color: "rgba(255,255,255,0.48)" }}>{row.key}</Text>
                   <Text style={{
-                    fontSize:13, fontWeight:700, color:"#fff",
-                    textAlign:"right", maxWidth:130,
-                    overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                    fontSize: 13, fontWeight: 700, color: "#fff",
+                    textAlign: "right", maxWidth: 130,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   }}>
                     {row.value}
                   </Text>
@@ -394,7 +361,7 @@ export default function NewCampaignPage() {
               ))}
             </div>
 
-            {/* Estimate */}
+            {/* Quota visual */}
             <div style={{
               background:   "rgba(255,255,255,0.08)",
               borderRadius: R.lg,
@@ -402,15 +369,14 @@ export default function NewCampaignPage() {
               textAlign:    "center",
               marginBottom: 18,
             }}>
-              <div style={{ fontSize:42, fontWeight:900, color:"#fff", lineHeight:1 }}>
-                ~{estimate > 0 ? estimate.toLocaleString("fr-FR") : "—"}
+              <div style={{ fontSize: 42, fontWeight: 900, color: "#fff", lineHeight: 1 }}>
+                {quota}
               </div>
-              <Text style={{ fontSize:12.5, color:"rgba(255,255,255,0.5)", marginTop:5, display:"block" }}>
-                prospects estimés
+              <Text style={{ fontSize: 12.5, color: "rgba(255,255,255,0.5)", marginTop: 5, display: "block" }}>
+                prospects max
               </Text>
             </div>
 
-            {/* Launch */}
             <Button
               block
               size="large"
@@ -424,14 +390,14 @@ export default function NewCampaignPage() {
                 fontWeight:  700,
                 fontSize:    15,
                 height:      48,
-                borderRadius:R.lg,
+                borderRadius: R.lg,
               }}
             >
               Démarrer la prospection
             </Button>
 
-            <Text style={{ display:"block", textAlign:"center", fontSize:11, color:"rgba(255,255,255,0.33)", marginTop:10 }}>
-              Lance l'orchestrateur LangGraph
+            <Text style={{ display: "block", textAlign: "center", fontSize: 11, color: "rgba(255,255,255,0.33)", marginTop: 10 }}>
+              Collecte via API SIRENE INSEE
             </Text>
           </div>
         </div>

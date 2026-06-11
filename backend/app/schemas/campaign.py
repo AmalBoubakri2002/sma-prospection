@@ -7,22 +7,28 @@ _VALID_STATUSES = {"pending", "running", "done", "failed"}
 
 
 class CampaignCreate(BaseModel):
-    sector: str
-    country: str
-    sizes: list[str]
-    functions: list[str]
-    min_score: int = 70
-    sources: list[str]
+    codes_naf: list[str]
+    codes_postaux: list[str]
+    tranches_effectifs: list[str]
+    quota: int = 50
+    score_minimum: int = 0
     estimated_prospects: int = 0
 
-    @field_validator("min_score")
+    @field_validator("quota")
+    @classmethod
+    def quota_range(cls, v: int) -> int:
+        if not 1 <= v <= 500:
+            raise ValueError("Le quota doit être entre 1 et 500")
+        return v
+
+    @field_validator("score_minimum")
     @classmethod
     def score_range(cls, v: int) -> int:
         if not 0 <= v <= 100:
-            raise ValueError("Le score doit être entre 0 et 100")
+            raise ValueError("Le score minimum doit être entre 0 et 100")
         return v
 
-    @field_validator("sizes", "functions", "sources")
+    @field_validator("codes_naf", "codes_postaux", "tranches_effectifs")
     @classmethod
     def not_empty(cls, v: list) -> list:
         if not v:
@@ -33,12 +39,11 @@ class CampaignCreate(BaseModel):
 class CampaignResponse(BaseModel):
     id: uuid.UUID
     commercial_id: uuid.UUID
-    sector: str
-    country: str
-    sizes: list[str]
-    functions: list[str]
-    min_score: int
-    sources: list[str]
+    codes_naf: list[str]
+    codes_postaux: list[str]
+    tranches_effectifs: list[str]
+    quota: int
+    score_minimum: int
     estimated_prospects: int
     status: str
     created_at: datetime

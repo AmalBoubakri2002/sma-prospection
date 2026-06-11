@@ -15,13 +15,12 @@ class Campaign(Base):
         ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
 
-    # Paramètres de ciblage
-    sector: Mapped[str] = mapped_column(String(50))
-    country: Mapped[str] = mapped_column(String(50))
-    sizes: Mapped[list] = mapped_column(JSON)       # ["50-200", "201-500"]
-    functions: Mapped[list] = mapped_column(JSON)   # ["ceo", "dsi"]
-    min_score: Mapped[int] = mapped_column(Integer, default=70)
-    sources: Mapped[list] = mapped_column(JSON)     # ["sirene", "linkedin"]
+    # Paramètres de ciblage SIRENE
+    codes_naf: Mapped[list] = mapped_column(JSON)          # ["62.01Z", "62.02A"]
+    codes_postaux: Mapped[list] = mapped_column(JSON)      # ["75008", "75009"]
+    tranches_effectifs: Mapped[list] = mapped_column(JSON) # ["12", "21", "22"]
+    quota: Mapped[int] = mapped_column(Integer, default=50)
+    score_minimum: Mapped[int] = mapped_column(Integer, default=0)
 
     # Résultats
     estimated_prospects: Mapped[int] = mapped_column(Integer, default=0)
