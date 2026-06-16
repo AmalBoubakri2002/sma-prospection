@@ -4,8 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password, verify_password
-from app.models.user import User
-from app.schemas.auth import UserCreate
+from app.models.user import User, UserStatus
+from app.schemas.auth import CommercialRegister, UserCreate
 
 
 async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
@@ -18,12 +18,18 @@ async def get_user_by_id(db: AsyncSession, user_id: str) -> User | None:
     return result.scalar_one_or_none()
 
 
-async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
+async def create_user(
+    db: AsyncSession,
+    user_in: UserCreate | CommercialRegister,
+    role: str = "commercial",
+    status: str = UserStatus.ACTIVE,
+) -> User:
     user = User(
         email=user_in.email,
         hashed_password=hash_password(user_in.password),
         full_name=user_in.full_name,
-        role=user_in.role,
+        role=getattr(user_in, "role", role),
+        status=status,
     )
     db.add(user)
     await db.commit()
@@ -31,10 +37,12 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
     return user
 
 
-async def list_users(db: AsyncSession, role: str | None = None) -> list[User]:
+async def list_users(db: AsyncSession, role: str | None = None, status: str | None = None) -> list[User]:
     stmt = select(User).order_by(User.created_at.desc())
     if role:
         stmt = stmt.where(User.role == role)
+    if status:
+        stmt = stmt.where(User.status == status)
     result = await db.execute(stmt)
     return list(result.scalars().all())
 

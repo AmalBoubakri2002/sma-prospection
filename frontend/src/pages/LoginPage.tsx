@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Form, Input, Button, Typography, App } from "antd";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import api from "@/utils/api";
 import type { AuthUser } from "@/stores/authStore";
@@ -56,8 +56,8 @@ export default function LoginPage() {
 
       setAuth(tokenData.access_token, user);
       navigate(user.role === "admin" ? "/admin" : "/commercial");
-    } catch {
-      message.error("Email ou mot de passe incorrect");
+    } catch (err: any) {
+      message.error(err.response?.data?.detail ?? "Email ou mot de passe incorrect");
     } finally {
       setLoading(false);
     }
@@ -145,7 +145,10 @@ export default function LoginPage() {
         </Form>
 
         <div style={{ textAlign: "center", marginTop: 24, borderTop: `1px solid ${C.border}`, paddingTop: 18 }}>
-          <Text style={{ color: C.textFaint, fontSize: 12 }}>
+          <Text style={{ color: C.textMuted, fontSize: 13 }}>
+            Vous êtes commercial ? <Link to="/register" style={{ color: "#3a6fc4", fontWeight: 600 }}>Créer un compte</Link>
+          </Text>
+          <Text style={{ display: "block", color: C.textFaint, fontSize: 12, marginTop: 14 }}>
             © 2026 ProspectAI · Tous droits réservés
           </Text>
         </div>

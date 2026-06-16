@@ -1,5 +1,5 @@
 import { useNavigate, useLocation, Outlet } from "react-router-dom";
-import { Avatar, Dropdown, Badge } from "antd";
+import { Avatar, Dropdown, App } from "antd";
 import type { MenuProps } from "antd";
 import {
   DashboardOutlined,
@@ -7,11 +7,14 @@ import {
   TeamOutlined,
   CalendarOutlined,
   LogoutOutlined,
-  BellOutlined,
   UserOutlined,
   DownOutlined,
 } from "@ant-design/icons";
 import { useAuthStore } from "@/stores/authStore";
+import NotificationBell from "@/components/NotificationBell";
+import { useNotifications } from "@/hooks/useNotifications";
+import type { NotificationItem } from "@/hooks/useNotifications";
+import api from "@/utils/api";
 import { C, S } from "@/styles/tokens";
 
 interface NavItem {
@@ -21,12 +24,20 @@ interface NavItem {
   path: string;
 }
 
-const navItems: NavItem[] = [
-  { key: "dashboard", label: "Tableau de bord", icon: <DashboardOutlined />, path: "/commercial" },
-  { key: "campagnes", label: "Campagnes",        icon: <RocketOutlined />,    path: "/commercial/campagnes/nouvelle" },
-  { key: "prospects", label: "Prospects",        icon: <TeamOutlined />,      path: "/commercial/prospects" },
-  { key: "agenda",    label: "Agenda",           icon: <CalendarOutlined />,  path: "/commercial/agenda" },
-];
+function getNavItems(isActive: boolean): NavItem[] {
+  const items: NavItem[] = [
+    { key: "dashboard", label: "Tableau de bord", icon: <DashboardOutlined />, path: "/commercial" },
+  ];
+  if (isActive) {
+    items.push(
+      { key: "campagnes", label: "Campagnes", icon: <RocketOutlined />,   path: "/commercial/campagnes/nouvelle" },
+      { key: "prospects", label: "Prospects", icon: <TeamOutlined />,     path: "/commercial/prospects" },
+      { key: "agenda",    label: "Agenda",    icon: <CalendarOutlined />, path: "/commercial/agenda" },
+    );
+  }
+  items.push({ key: "profil", label: "Profil", icon: <UserOutlined />, path: "/commercial/profil" });
+  return items;
+}
 
 function ProspectLogo() {
   return (
@@ -62,7 +73,27 @@ function getAvatarChar(u: ReturnType<typeof useAuthStore.getState>["user"]): str
 export default function CommercialLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, clearAuth } = useAuthStore();
+  const { user, token, clearAuth, setAuth } = useAuthStore();
+  const { message } = App.useApp();
+
+  // Le compte peut être approuvé/refusé par un admin pendant que l'utilisateur
+  // est déjà connecté : dès que la notification arrive en temps réel, on
+  // resynchronise le statut sans attendre un refresh ou un relogin.
+  const handleNotification = (notification: NotificationItem) => {
+    if (notification.type === "ACCOUNT_APPROVED" || notification.type === "ACCOUNT_REJECTED") {
+      if (!token) return;
+      api.get("/auth/me").then(({ data }) => {
+        setAuth(token, data);
+        if (notification.type === "ACCOUNT_APPROVED") {
+          message.success("Votre compte a été approuvé ! Vous avez maintenant accès à toutes les fonctionnalités.");
+        }
+      });
+    }
+  };
+
+  const { notifications, markRead } = useNotifications(handleNotification);
+
+  const navItems = getNavItems(user?.status === "ACTIVE");
 
   const activeKey = navItems.find((item) => {
     if (item.path === "/commercial") return location.pathname === "/commercial";
@@ -170,35 +201,7 @@ export default function CommercialLayout() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
 
           {/* Notifications */}
-          <Badge count={0} size="small">
-            <button
-              aria-label="Notifications"
-              style={{
-                width:        36,
-                height:       36,
-                borderRadius: 8,
-                border:       "none",
-                background:   "transparent",
-                display:      "flex",
-                alignItems:   "center",
-                justifyContent:"center",
-                cursor:       "pointer",
-                color:        C.textMuted,
-                fontSize:     17,
-                transition:   "background 0.15s, color 0.15s",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = C.bg;
-                (e.currentTarget as HTMLButtonElement).style.color = C.navy;
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                (e.currentTarget as HTMLButtonElement).style.color = C.textMuted;
-              }}
-            >
-              <BellOutlined />
-            </button>
-          </Badge>
+          <NotificationBell notifications={notifications} onMarkRead={markRead} />
 
           {/* User menu */}
           <Dropdown menu={{ items: userMenu }} trigger={["click"]} placement="bottomRight">

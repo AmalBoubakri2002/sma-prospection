@@ -8,7 +8,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.base import AsyncSessionLocal, Base, engine
-from app.models.user import User
+from app.models import Notification, User  # noqa: F401 — registers all models on Base.metadata
 
 
 async def _seed_admin() -> None:

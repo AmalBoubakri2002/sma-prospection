@@ -9,6 +9,8 @@ import {
   MenuUnfoldOutlined,
 } from "@ant-design/icons";
 import { useAuthStore } from "@/stores/authStore";
+import NotificationBell from "@/components/NotificationBell";
+import { useNotifications } from "@/hooks/useNotifications";
 import { C, S } from "@/styles/tokens";
 
 interface NavItem {
@@ -52,6 +54,7 @@ export default function AdminLayout() {
   const navigate   = useNavigate();
   const location   = useLocation();
   const { user, clearAuth } = useAuthStore();
+  const { notifications, markRead } = useNotifications();
 
   const width = collapsed ? SIDEBAR_W_COLLAPSED : SIDEBAR_W;
 
@@ -209,6 +212,23 @@ export default function AdminLayout() {
 
       {/* ── Main content ─────────────────────────────────────── */}
       <div style={{ marginLeft: width, flex: 1, transition: "margin-left 0.2s ease", minHeight: "100vh" }}>
+        <header
+          aria-label="Barre supérieure"
+          style={{
+            height:       64,
+            background:   C.surface,
+            display:      "flex",
+            alignItems:   "center",
+            justifyContent: "flex-end",
+            padding:      "0 32px",
+            position:     "sticky",
+            top:          0,
+            zIndex:       100,
+            boxShadow:    S.nav,
+          }}
+        >
+          <NotificationBell notifications={notifications} onMarkRead={markRead} />
+        </header>
         <Outlet />
       </div>
     </div>

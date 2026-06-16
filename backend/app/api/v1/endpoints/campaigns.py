@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import require_active_user
 from app.db.base import get_db
 from app.models.user import User
 from app.schemas.campaign import CampaignCreate, CampaignResponse, CampaignStatusUpdate
@@ -22,7 +22,7 @@ router = APIRouter()
 async def create(
     data: CampaignCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_user),
 ):
     return await create_campaign(db, data, current_user.id)
 
@@ -30,7 +30,7 @@ async def create(
 @router.get("/", response_model=list[CampaignResponse])
 async def list_(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_user),
 ):
     return await list_campaigns(db, current_user.id)
 
@@ -39,7 +39,7 @@ async def list_(
 async def get(
     campaign_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_user),
 ):
     campaign = await get_campaign(db, campaign_id, current_user.id)
     if not campaign:
@@ -52,7 +52,7 @@ async def update_status(
     campaign_id: uuid.UUID,
     data: CampaignStatusUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_user),
 ):
     campaign = await get_campaign(db, campaign_id, current_user.id)
     if not campaign:
@@ -64,7 +64,7 @@ async def update_status(
 async def delete(
     campaign_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_active_user),
 ):
     campaign = await get_campaign(db, campaign_id, current_user.id)
     if not campaign:

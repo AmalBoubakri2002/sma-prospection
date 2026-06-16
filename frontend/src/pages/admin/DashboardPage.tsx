@@ -4,6 +4,7 @@ import {
   TeamOutlined,
   CheckCircleOutlined,
   StopOutlined,
+  ClockCircleOutlined,
   TrophyOutlined,
   PlusOutlined,
   ArrowRightOutlined,
@@ -14,7 +15,7 @@ import { C, S, R } from "@/styles/tokens";
 
 const { Title, Text } = Typography;
 
-interface Stats { total: number; actifs: number; inactifs: number; }
+interface Stats { total: number; actifs: number; inactifs: number; en_attente: number; }
 
 interface StatCardProps {
   icon:    React.ReactNode;
@@ -111,6 +112,14 @@ export default function AdminDashboardPage() {
               accent={C.green}
               iconBg={C.greenBg}
               iconColor={C.green}
+            />
+            <StatCard
+              icon={<ClockCircleOutlined />}
+              label="En attente de validation"
+              value={stats?.en_attente ?? 0}
+              accent={C.amber}
+              iconBg={C.amberBg}
+              iconColor={C.amber}
             />
             <StatCard
               icon={<StopOutlined />}

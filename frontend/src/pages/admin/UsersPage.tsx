@@ -5,7 +5,8 @@ import {
 } from "antd";
 import {
   PlusOutlined, EditOutlined, DeleteOutlined,
-  CheckCircleOutlined, StopOutlined, SearchOutlined, TeamOutlined,
+  CheckCircleOutlined, StopOutlined, ClockCircleOutlined, CloseCircleOutlined,
+  SearchOutlined, TeamOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
 import api from "@/utils/api";
@@ -13,12 +14,14 @@ import { C, S, R } from "@/styles/tokens";
 
 const { Title, Text } = Typography;
 
+type CommercialStatus = "PENDING" | "ACTIVE" | "REJECTED";
+
 interface Commercial {
   id:         string;
   email:      string;
   full_name:  string | null;
   role:       string;
-  is_active:  boolean;
+  status:     CommercialStatus;
   created_at: string;
 }
 
@@ -99,10 +102,20 @@ export default function UsersPage() {
     }
   };
 
-  const handleToggleActive = async (user: Commercial) => {
+  const handleApprove = async (user: Commercial) => {
     try {
-      await api.patch(`/users/${user.id}`, { is_active: !user.is_active });
-      message.success(user.is_active ? "Compte désactivé" : "Compte activé");
+      await api.post(`/users/${user.id}/approve`);
+      message.success(user.status === "PENDING" ? "Compte approuvé" : "Compte réactivé");
+      fetchUsers();
+    } catch {
+      message.error("Erreur lors de la validation du compte");
+    }
+  };
+
+  const handleReject = async (user: Commercial) => {
+    try {
+      await api.post(`/users/${user.id}/reject`);
+      message.success(user.status === "PENDING" ? "Demande refusée" : "Compte désactivé");
       fetchUsers();
     } catch {
       message.error("Erreur lors de la mise à jour du statut");
@@ -125,8 +138,9 @@ export default function UsersPage() {
       (u.full_name ?? "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const activeCount   = users.filter((u) => u.is_active).length;
-  const inactiveCount = users.length - activeCount;
+  const activeCount   = users.filter((u) => u.status === "ACTIVE").length;
+  const pendingCount  = users.filter((u) => u.status === "PENDING").length;
+  const rejectedCount = users.filter((u) => u.status === "REJECTED").length;
 
   const columns: ColumnsType<Commercial> = [
     {
@@ -156,14 +170,17 @@ export default function UsersPage() {
     },
     {
       title: "Statut",
-      key: "is_active",
-      width: 110,
-      render: (_, record) =>
-        record.is_active ? (
-          <Tag icon={<CheckCircleOutlined />} color="success">Actif</Tag>
-        ) : (
-          <Tag icon={<StopOutlined />} color="error">Inactif</Tag>
-        ),
+      key: "status",
+      width: 130,
+      render: (_, record) => {
+        if (record.status === "PENDING") {
+          return <Tag icon={<ClockCircleOutlined />} color="warning">En attente</Tag>;
+        }
+        if (record.status === "REJECTED") {
+          return <Tag icon={<CloseCircleOutlined />} color="error">Refusé</Tag>;
+        }
+        return <Tag icon={<CheckCircleOutlined />} color="success">Actif</Tag>;
+      },
     },
     {
       title: "Création",
@@ -178,7 +195,7 @@ export default function UsersPage() {
     {
       title: "Actions",
       key: "actions",
-      width: 120,
+      width: 180,
       align: "center",
       render: (_, record) => (
         <Space size={4}>
@@ -194,15 +211,38 @@ export default function UsersPage() {
               }}
             />
           </Tooltip>
-          <Tooltip title={record.is_active ? "Désactiver" : "Activer"}>
-            <Button
-              type="text"
-              size="small"
-              icon={record.is_active ? <StopOutlined /> : <CheckCircleOutlined />}
-              style={{ color: record.is_active ? C.red : C.green }}
-              onClick={() => handleToggleActive(record)}
-            />
-          </Tooltip>
+          {record.status === "PENDING" ? (
+            <>
+              <Tooltip title="Approuver la demande">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CheckCircleOutlined />}
+                  style={{ color: C.green }}
+                  onClick={() => handleApprove(record)}
+                />
+              </Tooltip>
+              <Tooltip title="Refuser la demande">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<CloseCircleOutlined />}
+                  style={{ color: C.red }}
+                  onClick={() => handleReject(record)}
+                />
+              </Tooltip>
+            </>
+          ) : (
+            <Tooltip title={record.status === "ACTIVE" ? "Désactiver" : "Réactiver"}>
+              <Button
+                type="text"
+                size="small"
+                icon={record.status === "ACTIVE" ? <StopOutlined /> : <CheckCircleOutlined />}
+                style={{ color: record.status === "ACTIVE" ? C.red : C.green }}
+                onClick={() => (record.status === "ACTIVE" ? handleReject(record) : handleApprove(record))}
+              />
+            </Tooltip>
+          )}
           <Tooltip title="Supprimer">
             <Popconfirm
               title="Supprimer ce compte ?"
@@ -234,8 +274,11 @@ export default function UsersPage() {
               <span style={{ fontWeight: 700, color: C.navy }}>{users.length}</span> compte{users.length !== 1 ? "s" : ""} au total
             </Text>
             <Text style={{ fontSize: 13, color: C.green, fontWeight: 500 }}>● {activeCount} actif{activeCount !== 1 ? "s" : ""}</Text>
-            {inactiveCount > 0 && (
-              <Text style={{ fontSize: 13, color: C.red, fontWeight: 500 }}>● {inactiveCount} inactif{inactiveCount !== 1 ? "s" : ""}</Text>
+            {pendingCount > 0 && (
+              <Text style={{ fontSize: 13, color: C.amber, fontWeight: 500 }}>● {pendingCount} en attente</Text>
+            )}
+            {rejectedCount > 0 && (
+              <Text style={{ fontSize: 13, color: C.red, fontWeight: 500 }}>● {rejectedCount} refusé{rejectedCount !== 1 ? "s" : ""}</Text>
             )}
           </div>
         </div>

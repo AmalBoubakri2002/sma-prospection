@@ -1,13 +1,17 @@
 import { Routes, Route, Navigate } from "react-router-dom";
-import { useAuthStore } from "@/stores/authStore";
+import { Spin } from "antd";
+import { useAuthStore, useAuthHydrated } from "@/stores/authStore";
 import LoginPage from "@/pages/LoginPage";
+import RegisterPage from "@/pages/RegisterPage";
 import AdminLayout from "@/components/AdminLayout";
 import AdminDashboardPage from "@/pages/admin/DashboardPage";
 import UsersPage from "@/pages/admin/UsersPage";
 import CommercialLayout from "@/components/CommercialLayout";
 import CommercialDashboardPage from "@/pages/commercial/DashboardPage";
 import NewCampaignPage from "@/pages/commercial/NewCampaignPage";
+import ProfilePage from "@/pages/commercial/ProfilePage";
 import ProtectedRoute from "@/components/ProtectedRoute";
+import RequireActiveAccount from "@/components/RequireActiveAccount";
 
 function RootRedirect() {
   const user = useAuthStore((state) => state.user);
@@ -17,9 +21,20 @@ function RootRedirect() {
 }
 
 export default function App() {
+  const hydrated = useAuthHydrated();
+
+  if (!hydrated) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
 
       {/* Commercial */}
       <Route
@@ -31,7 +46,15 @@ export default function App() {
         }
       >
         <Route index element={<CommercialDashboardPage />} />
-        <Route path="campagnes/nouvelle" element={<NewCampaignPage />} />
+        <Route path="profil" element={<ProfilePage />} />
+        <Route
+          path="campagnes/nouvelle"
+          element={
+            <RequireActiveAccount>
+              <NewCampaignPage />
+            </RequireActiveAccount>
+          }
+        />
       </Route>
 
       {/* Admin */}
