@@ -48,6 +48,12 @@ async def get_campaign(
     return result.scalar_one_or_none()
 
 
+async def get_campaign_by_id(db: AsyncSession, campaign_id: uuid.UUID) -> Campaign | None:
+    """Sans filtre de propriétaire — usage interne (worker, orchestrateur)."""
+    result = await db.execute(select(Campaign).where(Campaign.id == campaign_id))
+    return result.scalar_one_or_none()
+
+
 async def update_campaign_status(
     db: AsyncSession, campaign: Campaign, status: str
 ) -> Campaign:

@@ -25,5 +25,14 @@ class Settings(BaseSettings):
     FIRST_ADMIN_PASSWORD: str = "Admin1234!"
     FIRST_ADMIN_NAME: str = "Administrateur"
 
+    # API SIRENE (INSEE) — Agent Veille
+    INSEE_API_KEY: str = ""
+    INSEE_SIRENE_BASE_URL: str = "https://api.insee.fr/api-sirene/3.11"
+    SIRENE_PAGE_SIZE: int = 20
+    SIRENE_REQUEST_DELAY_SECONDS: float = 2.0
+
+    # Workers agents
+    WORKER_POLL_INTERVAL_SECONDS: float = 5.0
+
 
 settings = Settings()

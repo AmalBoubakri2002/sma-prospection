@@ -1,4 +1,5 @@
-import { Typography, Button } from "antd";
+import { useEffect, useState } from "react";
+import { Typography, Button, Tag, Spin } from "antd";
 import {
   TeamOutlined, CalendarOutlined, RiseOutlined,
   PlusOutlined, RocketOutlined, ClockCircleOutlined, LockOutlined,
@@ -6,6 +7,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import type { AuthUser } from "@/stores/authStore";
+import api from "@/utils/api";
 import { C, S, R } from "@/styles/tokens";
 
 function displayFirstName(user: AuthUser | null): string {
@@ -14,6 +16,23 @@ function displayFirstName(user: AuthUser | null): string {
   if (name && !/^\d+$/.test(name.trim())) return name.trim().split(" ")[0];
   return user.email?.split("@")[0] ?? "Commercial";
 }
+
+interface Campaign {
+  id: string;
+  codes_naf: string[];
+  codes_postaux: string[];
+  quota: number;
+  leads_count: number;
+  status: "pending" | "running" | "done" | "failed";
+  created_at: string;
+}
+
+const STATUS_LABEL: Record<Campaign["status"], { label: string; color: string }> = {
+  pending: { label: "En attente",  color: "default" },
+  running: { label: "En cours",    color: "processing" },
+  done:    { label: "Terminée",    color: "success" },
+  failed:  { label: "Échouée",     color: "error" },
+};
 
 const { Title, Text } = Typography;
 
@@ -59,6 +78,17 @@ export default function CommercialDashboardPage() {
   const navigate  = useNavigate();
   const user      = useAuthStore((s) => s.user);
   const isPending = user?.status === "PENDING";
+
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(true);
+
+  useEffect(() => {
+    if (isPending) { setLoadingCampaigns(false); return; }
+    api.get<Campaign[]>("/campaigns/")
+      .then((res) => setCampaigns(res.data))
+      .catch(() => {})
+      .finally(() => setLoadingCampaigns(false));
+  }, [isPending]);
 
   const now      = new Date();
   const hour     = now.getHours();
@@ -213,31 +243,72 @@ export default function CommercialDashboardPage() {
               </Button>
             </div>
 
-            {/* Empty state */}
-            <div style={{ padding:"56px 20px", textAlign:"center" }}>
-              <div style={{
-                width:60, height:60, borderRadius:"50%",
-                background:C.bg,
-                display:"flex", alignItems:"center", justifyContent:"center",
-                margin:"0 auto 16px",
-                fontSize:26, color:C.textFaint,
-              }}>
-                <RocketOutlined />
+            {loadingCampaigns ? (
+              <div style={{ padding: "56px 0", textAlign: "center" }}>
+                <Spin />
               </div>
-              <Text style={{ display:"block", color:C.text, fontSize:15, fontWeight:600, marginBottom:6 }}>
-                Aucune campagne pour l'instant
-              </Text>
-              <Text style={{ display:"block", color:C.textMuted, fontSize:13, marginBottom:22, maxWidth:340, margin:"0 auto 22px" }}>
-                Créez votre première campagne pour démarrer la prospection automatisée via l'agent LangGraph.
-              </Text>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => navigate("/commercial/campagnes/nouvelle")}
-              >
-                Créer une campagne
-              </Button>
-            </div>
+            ) : campaigns.length === 0 ? (
+              /* Empty state */
+              <div style={{ padding:"56px 20px", textAlign:"center" }}>
+                <div style={{
+                  width:60, height:60, borderRadius:"50%",
+                  background:C.bg,
+                  display:"flex", alignItems:"center", justifyContent:"center",
+                  margin:"0 auto 16px",
+                  fontSize:26, color:C.textFaint,
+                }}>
+                  <RocketOutlined />
+                </div>
+                <Text style={{ display:"block", color:C.text, fontSize:15, fontWeight:600, marginBottom:6 }}>
+                  Aucune campagne pour l'instant
+                </Text>
+                <Text style={{ display:"block", color:C.textMuted, fontSize:13, marginBottom:22, maxWidth:340, margin:"0 auto 22px" }}>
+                  Créez votre première campagne pour démarrer la prospection automatisée via l'agent LangGraph.
+                </Text>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => navigate("/commercial/campagnes/nouvelle")}
+                >
+                  Créer une campagne
+                </Button>
+              </div>
+            ) : (
+              /* Campaign list */
+              <div>
+                {campaigns.map((c) => (
+                  <div
+                    key={c.id}
+                    style={{
+                      padding: "16px 22px",
+                      borderBottom: `1px solid ${C.border}`,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <Text style={{ fontWeight: 600, color: C.navy, fontSize: 13.5 }}>
+                        {c.codes_naf.join(", ")}
+                      </Text>
+                      <Text style={{ display: "block", fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                        {c.codes_postaux.join(", ")} · {new Date(c.created_at).toLocaleDateString("fr-FR")}
+                      </Text>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                      <Text style={{ fontSize: 13, color: C.textMuted }}>
+                        <span style={{ fontWeight: 700, color: C.navy }}>{c.leads_count}</span> / {c.quota} leads
+                      </Text>
+                      <Tag color={STATUS_LABEL[c.status]?.color ?? "default"}>
+                        {STATUS_LABEL[c.status]?.label ?? c.status}
+                      </Tag>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
           </div>
         </>

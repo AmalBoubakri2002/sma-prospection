@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(psql postgresql://sma_user:sma_password@localhost:5433/sma_db -c ' *)"
+    ]
+  }
+}

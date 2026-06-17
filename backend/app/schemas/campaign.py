@@ -47,6 +47,7 @@ class CampaignResponse(BaseModel):
     estimated_prospects: int
     status: str
     created_at: datetime
+    leads_count: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -60,3 +61,17 @@ class CampaignStatusUpdate(BaseModel):
         if v not in _VALID_STATUSES:
             raise ValueError(f"Statut invalide. Valeurs acceptées : {_VALID_STATUSES}")
         return v
+
+
+class AgentTaskSummary(BaseModel):
+    agent_name: str
+    status: str
+    attempts: int
+    error: str | None = None
+
+
+class CampaignStatusResponse(BaseModel):
+    id: uuid.UUID
+    status: str
+    leads_collected: int
+    task: AgentTaskSummary | None = None

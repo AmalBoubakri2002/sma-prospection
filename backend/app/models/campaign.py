@@ -24,8 +24,7 @@ class Campaign(Base):
 
     # Résultats
     estimated_prospects: Mapped[int] = mapped_column(Integer, default=0)
-    status: Mapped[str] = mapped_column(String(20), default="pending")
-    # pending → running → done | failed
+    status: Mapped[str] = mapped_column(String(50), default="pending")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

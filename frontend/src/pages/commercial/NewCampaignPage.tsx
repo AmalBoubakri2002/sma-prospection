@@ -125,7 +125,7 @@ export default function NewCampaignPage() {
     if (!tranchesEffectifs.length) { message.warning("Sélectionnez au moins une tranche d'effectif."); return; }
     setLaunching(true);
     try {
-      await api.post("/campaigns/", {
+      const { data: campaign } = await api.post("/campaigns/", {
         codes_naf:          codesNaf,
         codes_postaux:      codesPostaux,
         tranches_effectifs: tranchesEffectifs,
@@ -133,10 +133,11 @@ export default function NewCampaignPage() {
         score_minimum:      scoreMinimum,
         estimated_prospects: 0,
       });
-      message.success("Campagne créée avec succès !");
+      await api.post(`/campaigns/${campaign.id}/start`);
+      message.success("Campagne lancée ! L'Agent Veille collecte les prospects.");
       navigate("/commercial");
     } catch {
-      message.error("Erreur lors de la création de la campagne.");
+      message.error("Erreur lors du lancement de la campagne.");
     } finally {
       setLaunching(false);
     }

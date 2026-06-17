@@ -7,7 +7,6 @@ import {
   ClockCircleOutlined,
   TrophyOutlined,
   PlusOutlined,
-  ArrowRightOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import api from "@/utils/api";
@@ -177,9 +176,6 @@ export default function AdminDashboardPage() {
                 </Text>
               </div>
             </div>
-
-           
-
           </div>
         </>
       )}

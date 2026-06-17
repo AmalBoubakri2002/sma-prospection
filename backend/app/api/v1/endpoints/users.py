@@ -37,7 +37,7 @@ async def get_stats(
     total = len(commercials)
     actifs = sum(1 for u in commercials if u.status == UserStatus.ACTIVE)
     en_attente = sum(1 for u in commercials if u.status == UserStatus.PENDING)
-    inactifs = total - actifs
+    inactifs = total - actifs - en_attente
     return {"total": total, "actifs": actifs, "inactifs": inactifs, "en_attente": en_attente}
 
 
