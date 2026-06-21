@@ -1,4 +1,5 @@
 import re
+from datetime import date
 
 _LEGAL_FORM_SUFFIXES = re.compile(
     r"\s*\b(SARL|SAS|SASU|SA|EURL|SCI|SNC|EI|EIRL)\b\s*$", re.IGNORECASE
@@ -74,6 +75,16 @@ def _company_name_from_raw(etablissement: dict) -> str:
     return etablissement.get("siret", "")
 
 
+def _parse_date(raw: str | None) -> date | None:
+    """Parse une date SIRENE au format YYYY-MM-DD, retourne None si invalide."""
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw)
+    except (ValueError, TypeError):
+        return None
+
+
 def normalize_etablissement(etablissement: dict) -> dict:
     """Mappe un établissement brut SIRENE vers les colonnes du modèle Lead.
     telephone et site_web ne sont pas fournis par SIRENE : laissés à None
@@ -86,6 +97,11 @@ def normalize_etablissement(etablissement: dict) -> dict:
     taille_entreprise = etablissement.get("trancheEffectifsEtablissement") or periode.get(
         "trancheEffectifsEtablissement"
     )
+    unite_legale = etablissement.get("uniteLegale", {})
+    date_creation = (
+        _parse_date(unite_legale.get("dateCreationUniteLegale"))
+        or _parse_date(etablissement.get("dateCreationEtablissement"))
+    )
 
     return {
         "company_name": normalize_company_name(_company_name_from_raw(etablissement)),
@@ -93,6 +109,7 @@ def normalize_etablissement(etablissement: dict) -> dict:
         "secteur": secteur,
         "taille_entreprise": taille_entreprise,
         "adresse": build_address(etablissement),
+        "date_creation": date_creation,
         "telephone": None,
         "site_web": None,
     }

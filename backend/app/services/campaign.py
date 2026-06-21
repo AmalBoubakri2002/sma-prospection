@@ -16,7 +16,6 @@ async def create_campaign(
         codes_postaux=data.codes_postaux,
         tranches_effectifs=data.tranches_effectifs,
         quota=data.quota,
-        score_minimum=data.score_minimum,
         estimated_prospects=data.estimated_prospects,
     )
     db.add(campaign)

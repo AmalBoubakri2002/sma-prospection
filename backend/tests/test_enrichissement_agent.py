@@ -2,6 +2,8 @@
   1. Boucle sur les lots de 50 (quota > 50)
   2. Fallback INPI quand recherche-entreprises ne retourne pas de CA
   3. Compteurs distincts (tous traités vs avec données réelles)
+  4. Propagation de ca_n1 depuis INPI
+  5. Calcul de score_intent (proxy complétude)
 """
 
 import uuid
@@ -10,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.enrichissement.agent import run_enrichissement
+from app.agents.enrichissement.agent import _compute_score_intent, run_enrichissement
 from app.models.lead import Lead, LeadStatus
 
 
@@ -51,6 +53,7 @@ async def test_loop_processes_all_leads_beyond_page_size():
 
     with (
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=fake_list_leads),
+        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
         patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock, return_value={}),
         patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock, return_value={}),
         patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock, return_value=None),
@@ -74,6 +77,7 @@ async def test_inpi_fallback_used_when_no_ca_from_recherche_entreprises():
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[
             [lead], []
         ]),
+        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
         patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock,
               return_value={"telephone": "0145678900"}),  # pas de CA
         patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock,
@@ -86,15 +90,14 @@ async def test_inpi_fallback_used_when_no_ca_from_recherche_entreprises():
 
     mock_inpi.assert_awaited_once_with("123456789")  # SIREN = 9 premiers chiffres du SIRET
 
-    _, kwargs = mock_update.call_args
     updated_fields = mock_update.call_args[0][2]  # 3ème argument positionnel
     assert updated_fields.get("ca") == 850000
     assert updated_fields.get("resultat_net") == 42000
 
 
 @pytest.mark.anyio
-async def test_inpi_not_called_when_ca_already_present():
-    """Fix 2 : INPI ne doit pas être appelé si recherche-entreprises a déjà renvoyé un CA."""
+async def test_inpi_called_for_ca_n1_even_when_ca_from_source1():
+    """INPI est toujours appelé (pour ca_n1), mais son ca ne remplace pas celui de source 1."""
     campaign = _make_campaign()
     db = AsyncMock()
     lead = _make_lead("12345678900014")
@@ -103,16 +106,24 @@ async def test_inpi_not_called_when_ca_already_present():
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[
             [lead], []
         ]),
+        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
         patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock,
               return_value={"ca": 1500000, "resultat_net": 80000}),
-        patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock) as mock_inpi,
+        patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock,
+              return_value={"ca": 900000, "resultat_net": 30000, "ca_n1": 750000}) as mock_inpi,
         patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock, return_value=None),
         patch("app.agents.enrichissement.agent.geocode_address", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock),
+        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock) as mock_update,
     ):
         await run_enrichissement(db, campaign)
 
-    mock_inpi.assert_not_awaited()
+    # INPI est toujours appelé (pour ca_n1)
+    mock_inpi.assert_awaited_once()
+    saved = mock_update.call_args[0][2]
+    # ca de source 1 conservé (1 500 000), pas écrasé par INPI (900 000)
+    assert saved.get("ca") == 1500000
+    # ca_n1 vient d'INPI
+    assert saved.get("ca_n1") == 750000
 
 
 @pytest.mark.anyio
@@ -140,8 +151,10 @@ async def test_leads_avec_donnees_counter_accurate():
 
     with (
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=fake_list),
+        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
         patch("app.agents.enrichissement.agent.enrich_from_siret", side_effect=fake_enrich),
         patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock, return_value={}),
+        patch("app.agents.enrichissement.agent.find_company_website", new_callable=AsyncMock, return_value=None),
         patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock, return_value=None),
         patch("app.agents.enrichissement.agent.geocode_address", new_callable=AsyncMock, return_value=None),
         patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock),
@@ -158,8 +171,127 @@ async def test_empty_campaign_returns_zero():
     campaign = _make_campaign()
     db = AsyncMock()
 
-    with patch("app.agents.enrichissement.agent.list_leads_to_enrich", new_callable=AsyncMock, return_value=[]):
+    with (
+        patch("app.agents.enrichissement.agent.list_leads_to_enrich", new_callable=AsyncMock, return_value=[]),
+        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
+    ):
         result = await run_enrichissement(db, campaign)
 
     assert result["leads_enrichis"] == 0
     assert result["leads_avec_donnees"] == 0
+
+
+# ── score_intent ──────────────────────────────────────────────────────────────
+
+def _make_lead_for_intent(**kwargs) -> MagicMock:
+    lead = MagicMock(spec=Lead)
+    lead.email = kwargs.get("email")
+    lead.telephone = kwargs.get("telephone")
+    lead.site_web = kwargs.get("site_web")
+    lead.prenom_dirigeant = kwargs.get("prenom_dirigeant")
+    lead.ca = kwargs.get("ca")
+    return lead
+
+
+def test_score_intent_all_present():
+    lead = _make_lead_for_intent(
+        email="j.dupont@acme.fr",
+        telephone="01 45 67 89 00",
+        site_web="https://acme.fr",
+        prenom_dirigeant="Jean",
+        ca=500000,
+    )
+    # email×2 + phone + web + dirigeant + ca = 6/6 = 1.0
+    assert _compute_score_intent({}, lead) == 1.0
+
+
+def test_score_intent_nothing():
+    lead = _make_lead_for_intent()
+    # 0/6 = 0.0
+    assert _compute_score_intent({}, lead) == 0.0
+
+
+def test_score_intent_email_only():
+    lead = _make_lead_for_intent()
+    fields = {"email": "j.dupont@acme.fr"}
+    # email×2 / 6 = 2/6 ≈ 0.3333
+    result = _compute_score_intent(fields, lead)
+    assert abs(result - 2 / 6) < 0.001
+
+
+def test_score_intent_fields_override_lead():
+    """Les données dans fields (enrichissement en cours) priment sur les attributs du lead."""
+    lead = _make_lead_for_intent()
+    fields = {"email": "found@acme.fr", "ca": 100000}
+    # email×2 + ca = 3/6 = 0.5
+    result = _compute_score_intent(fields, lead)
+    assert abs(result - 3 / 6) < 0.001
+
+
+@pytest.mark.anyio
+async def test_inpi_ca_n1_propagated_to_fields():
+    """ca_n1 retourné par INPI est stocké dans les champs du lead."""
+    campaign = _make_campaign()
+    db = AsyncMock()
+    lead = _make_lead("12345678900014")
+    lead.email = None
+    lead.telephone = None
+    lead.site_web = None
+    lead.prenom_dirigeant = None
+    lead.ca = None
+
+    with (
+        patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[[lead], []]),
+        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
+        patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock,
+              return_value={}),
+        patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock,
+              return_value={"ca": 500000, "resultat_net": 20000, "ca_n1": 430000}),
+        patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock,
+              return_value=None),
+        patch("app.agents.enrichissement.agent.geocode_address", new_callable=AsyncMock,
+              return_value=None),
+        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock) as mock_update,
+    ):
+        await run_enrichissement(db, campaign)
+
+    saved_fields = mock_update.call_args[0][2]
+    assert saved_fields.get("ca_n1") == 430000
+
+
+# ── cross-SIRET reuse ─────────────────────────────────────────────────────────
+
+@pytest.mark.anyio
+async def test_cross_siret_reuse_skips_all_apis():
+    """Si le SIRET a déjà été enrichi dans une autre campagne, les API ne sont pas rappelées."""
+    campaign = _make_campaign()
+    db = AsyncMock()
+    lead = _make_lead("12345678900014")
+
+    cached_data = {
+        "telephone": "01 45 67 89 00",
+        "site_web": "https://acme.fr",
+        "email": "j.dupont@acme.fr",
+        "ca": 800000,
+        "ca_n1": 700000,
+    }
+
+    with (
+        patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[[lead], []]),
+        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock,
+              return_value=cached_data),
+        patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock) as mock_enrich,
+        patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock) as mock_inpi,
+        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock) as mock_update,
+    ):
+        result = await run_enrichissement(db, campaign)
+
+    # Aucune API rappelée
+    mock_enrich.assert_not_awaited()
+    mock_inpi.assert_not_awaited()
+    # Lead quand même traité et sauvegardé
+    assert result["leads_enrichis"] == 1
+    assert result["leads_avec_donnees"] == 1
+    saved = mock_update.call_args[0][2]
+    assert saved["telephone"] == "01 45 67 89 00"
+    assert saved["ca_n1"] == 700000

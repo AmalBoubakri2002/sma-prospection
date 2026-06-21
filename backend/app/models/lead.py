@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
-from sqlalchemy import DateTime, Double, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Date, DateTime, Double, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -13,7 +13,6 @@ class LeadStatus:
 
     COLLECTE = "COLLECTE"
     ENRICHI = "ENRICHI"
-    SCORE = "SCORE"
     QUALIFIE = "QUALIFIE"
     EMAIL_GENERE = "EMAIL_GENERE"
     EN_ATTENTE_VALIDATION = "EN_ATTENTE_VALIDATION"
@@ -47,8 +46,11 @@ class Lead(Base):
     prenom_dirigeant: Mapped[str | None] = mapped_column(String(100))
     nom_dirigeant: Mapped[str | None] = mapped_column(String(100))
     titre_dirigeant: Mapped[str | None] = mapped_column(String(100))
-    ca: Mapped[int | None] = mapped_column()
-    resultat_net: Mapped[int | None] = mapped_column()
+    ca: Mapped[int | None] = mapped_column(Integer())
+    ca_n1: Mapped[int | None] = mapped_column(Integer())
+    resultat_net: Mapped[int | None] = mapped_column(Integer())
+    date_creation: Mapped[date | None] = mapped_column(Date())
+    score_intent: Mapped[float | None] = mapped_column(Double())
     latitude: Mapped[float | None] = mapped_column(Double())
     longitude: Mapped[float | None] = mapped_column(Double())
 

@@ -20,7 +20,6 @@ class Campaign(Base):
     codes_postaux: Mapped[list] = mapped_column(JSON)      # ["75008", "75009"]
     tranches_effectifs: Mapped[list] = mapped_column(JSON) # ["12", "21", "22"]
     quota: Mapped[int] = mapped_column(Integer, default=50)
-    score_minimum: Mapped[int] = mapped_column(Integer, default=0)
 
     # Résultats
     estimated_prospects: Mapped[int] = mapped_column(Integer, default=0)

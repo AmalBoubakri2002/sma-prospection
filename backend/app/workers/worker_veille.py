@@ -9,6 +9,7 @@ import logging
 import uuid
 
 from app.agents.veille.agent import run_veille
+from app.agents.veille.sirene import SireneConfigError
 from app.core.config import settings
 from app.db.base import AsyncSessionLocal
 from app.models.agent_task import AgentName, AgentTask, AgentTaskStatus
@@ -18,6 +19,7 @@ from app.services.agent_task import (
     mark_done,
     mark_failed_or_retry,
     mark_running,
+    recover_stuck_running_tasks,
 )
 from app.services.campaign import get_campaign_by_id, update_campaign_status
 
@@ -39,6 +41,16 @@ async def process_task(task_id: uuid.UUID) -> None:
         task = await mark_running(db, task)
         try:
             result = await run_veille(db, campaign)
+        except SireneConfigError as exc:
+            # Erreur de configuration : aucun retry possible, échec immédiat
+            logger.error(
+                "Échec Agent Veille (configuration) pour la campagne %s : %s",
+                campaign.id, exc,
+            )
+            task.attempts = task.max_attempts  # force l'échec sans retry
+            task = await mark_failed_or_retry(db, task, str(exc))
+            await update_campaign_status(db, campaign, "failed")
+            return
         except Exception as exc:  # noqa: BLE001 — toute erreur agent doit être tracée, pas planter le worker
             logger.exception("Échec Agent Veille pour la campagne %s", campaign.id)
             task = await mark_failed_or_retry(db, task, str(exc))
@@ -70,6 +82,10 @@ async def main() -> None:
         "Worker Agent Veille démarré (poll toutes les %.0fs)",
         settings.WORKER_POLL_INTERVAL_SECONDS,
     )
+    async with AsyncSessionLocal() as db:
+        recovered = await recover_stuck_running_tasks(db, AgentName.VEILLE)
+        if recovered:
+            logger.warning("Récupération de %d tâche(s) bloquée(s) en RUNNING → PENDING", recovered)
     while True:
         try:
             processed = await poll_once()

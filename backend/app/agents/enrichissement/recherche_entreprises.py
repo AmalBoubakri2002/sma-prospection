@@ -77,11 +77,14 @@ _QUALITE_CODES: dict[str, str] = {
 }
 
 
-_COMMISSAIRE_KEYWORDS = ("commissaire", "auditeur", "censeur")
+_NON_EXEC_KEYWORDS = (
+    "commissaire", "auditeur", "censeur",
+    "conseil de surveillance", "observateur",
+)
 
 
 def _is_commissaire(qualite: str) -> bool:
-    return any(kw in qualite.lower() for kw in _COMMISSAIRE_KEYWORDS)
+    return any(kw in qualite.lower() for kw in _NON_EXEC_KEYWORDS)
 
 
 def extract_dirigeant_principal(result: dict) -> dict:
@@ -133,11 +136,11 @@ def extract_contact_info(result: dict) -> dict:
         raw_ca = year_data.get("ca")
         raw_rn = year_data.get("resultat_net")
         try:
-            ca = int(raw_ca) if raw_ca is not None else None
+            ca = int(float(raw_ca)) if raw_ca is not None else None
         except (ValueError, TypeError):
             ca = None
         try:
-            resultat_net = int(raw_rn) if raw_rn is not None else None
+            resultat_net = int(float(raw_rn)) if raw_rn is not None else None
         except (ValueError, TypeError):
             resultat_net = None
 

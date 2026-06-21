@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.agent_task import AgentTask, AgentTaskStatus
@@ -62,3 +62,16 @@ async def mark_failed_or_retry(db: AsyncSession, task: AgentTask, error: str) ->
     await db.commit()
     await db.refresh(task)
     return task
+
+
+async def recover_stuck_running_tasks(db: AsyncSession, agent_name: str) -> int:
+    """Reset RUNNING tasks back to PENDING at worker startup.
+    Guards against tasks left RUNNING when a worker process was killed mid-execution."""
+    result = await db.execute(
+        update(AgentTask)
+        .where(AgentTask.agent_name == agent_name, AgentTask.status == AgentTaskStatus.RUNNING)
+        .values(status=AgentTaskStatus.PENDING)
+        .returning(AgentTask.id)
+    )
+    await db.commit()
+    return len(result.fetchall())

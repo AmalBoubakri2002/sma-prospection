@@ -12,7 +12,13 @@ from app.agents.enrichissement.agent import run_enrichissement
 from app.core.config import settings
 from app.db.base import AsyncSessionLocal
 from app.models.agent_task import AgentName, AgentTask, AgentTaskStatus
-from app.services.agent_task import get_pending_tasks, mark_done, mark_failed_or_retry, mark_running
+from app.services.agent_task import (
+    get_pending_tasks,
+    mark_done,
+    mark_failed_or_retry,
+    mark_running,
+    recover_stuck_running_tasks,
+)
 from app.services.campaign import get_campaign_by_id, update_campaign_status
 
 logging.basicConfig(
@@ -63,6 +69,10 @@ async def main() -> None:
         "Worker Agent Enrichissement démarré (poll toutes les %.0fs)",
         settings.WORKER_POLL_INTERVAL_SECONDS,
     )
+    async with AsyncSessionLocal() as db:
+        recovered = await recover_stuck_running_tasks(db, AgentName.ENRICHISSEMENT)
+        if recovered:
+            logger.warning("Récupération de %d tâche(s) bloquée(s) en RUNNING → PENDING", recovered)
     while True:
         try:
             processed = await poll_once()

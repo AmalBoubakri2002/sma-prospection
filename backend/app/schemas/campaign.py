@@ -11,7 +11,6 @@ class CampaignCreate(BaseModel):
     codes_postaux: list[str]
     tranches_effectifs: list[str]
     quota: int = 50
-    score_minimum: int = 0
     estimated_prospects: int = 0
 
     @field_validator("quota")
@@ -19,13 +18,6 @@ class CampaignCreate(BaseModel):
     def quota_range(cls, v: int) -> int:
         if not 1 <= v <= 500:
             raise ValueError("Le quota doit être entre 1 et 500")
-        return v
-
-    @field_validator("score_minimum")
-    @classmethod
-    def score_range(cls, v: int) -> int:
-        if not 0 <= v <= 100:
-            raise ValueError("Le score minimum doit être entre 0 et 100")
         return v
 
     @field_validator("codes_naf", "codes_postaux", "tranches_effectifs")
@@ -43,7 +35,6 @@ class CampaignResponse(BaseModel):
     codes_postaux: list[str]
     tranches_effectifs: list[str]
     quota: int
-    score_minimum: int
     estimated_prospects: int
     status: str
     created_at: datetime

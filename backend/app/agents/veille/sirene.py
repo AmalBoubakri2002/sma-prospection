@@ -9,6 +9,11 @@ class SireneAPIError(Exception):
     pass
 
 
+class SireneConfigError(SireneAPIError):
+    """Erreur de configuration (clé manquante, URL invalide) — aucun retry utile."""
+    pass
+
+
 def _or_group(field: str, values: list[str], period: bool) -> str:
     if period:
         parts = [f"periode({field}:{v})" for v in values]
@@ -58,7 +63,7 @@ class SireneClient:
         total_sirene est le nombre total d'établissements correspondant aux critères
         dans SIRENE, indépendamment du quota. Vaut 0 si l'API ne renvoie pas cette info."""
         if not self.api_key:
-            raise SireneAPIError("INSEE_API_KEY non configurée (voir backend/.env)")
+            raise SireneConfigError("INSEE_API_KEY non configurée (voir backend/.env)")
 
         query = build_query(codes_naf, codes_postaux, tranches_effectifs)
         page_size = min(settings.SIRENE_PAGE_SIZE, quota)

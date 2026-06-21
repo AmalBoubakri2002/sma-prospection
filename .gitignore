@@ -46,7 +46,13 @@ postgres_data/
 mlruns/
 *.pkl
 *.joblib
-models/*.bin
+backend/models/
+
+# ─── Data files ───────────────────────────────────────────
+*.csv
+
+# ─── Claude Code ──────────────────────────────────────────
+.claude/settings.local.json
 
 # ─── Test artifacts ───────────────────────────────────────
 test.db

@@ -56,18 +56,21 @@ def _extract_latest_finances(data: list | dict) -> dict:
     bilans_sorted = sorted(bilans, key=sort_key, reverse=True)
     latest = bilans_sorted[0]
 
-    ca = _to_int(
-        latest.get("chiffreAffaires")
-        or latest.get("chiffre_affaires")
-        or latest.get("ca")
-    )
-    resultat = _to_int(
-        latest.get("resultatNet")
-        or latest.get("resultat_net")
-        or latest.get("resultat")
-    )
+    def _first(bilan: dict, *keys: str) -> object:
+        for k in keys:
+            v = bilan.get(k)
+            if v is not None:
+                return v
+        return None
 
-    return {"ca": ca, "resultat_net": resultat}
+    ca = _to_int(_first(latest, "chiffreAffaires", "chiffre_affaires", "ca"))
+    resultat = _to_int(_first(latest, "resultatNet", "resultat_net", "resultat"))
+
+    # CA année N-1 pour calculer l'évolution dans l'Agent Scoring
+    prev = bilans_sorted[1] if len(bilans_sorted) >= 2 else None
+    ca_n1 = _to_int(_first(prev, "chiffreAffaires", "chiffre_affaires", "ca")) if prev else None
+
+    return {"ca": ca, "resultat_net": resultat, "ca_n1": ca_n1}
 
 
 def _to_int(value: object) -> int | None:

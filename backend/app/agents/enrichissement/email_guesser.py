@@ -15,7 +15,11 @@ def _remove_accents(text: str) -> str:
 
 
 def _slugify_name_part(part: str) -> str:
-    """Transforme 'Jean-Pierre' → 'jean-pierre', 'O'Brien' → 'obrien'."""
+    """Transforme 'Jean-Pierre' → 'jean-pierre', 'O'Brien' → 'obrien'.
+    Supprime les contenus entre parenthèses (ex: 'CANDELA (CANDELA)' → 'CANDELA').
+    """
+    # Retire les contenus entre parenthèses avant tout traitement
+    part = re.sub(r"\s*\(.*?\)", "", part).strip()
     clean = _remove_accents(part.lower())
     # garde lettres, chiffres et tirets, retire le reste
     clean = re.sub(r"[^a-z0-9-]", "", clean)

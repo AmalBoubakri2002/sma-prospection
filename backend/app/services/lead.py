@@ -84,6 +84,32 @@ async def list_leads_to_enrich(
     return list(result.scalars().all())
 
 
+_REUSABLE_FIELDS = (
+    "telephone", "site_web", "email",
+    "prenom_dirigeant", "nom_dirigeant", "titre_dirigeant",
+    "ca", "resultat_net", "ca_n1",
+    "latitude", "longitude", "date_creation",
+)
+
+
+async def get_enriched_fields_by_siret(db: AsyncSession, siret: str) -> dict | None:
+    """Renvoie les champs enrichis du lead le plus récent avec ce SIRET (status=ENRICHI).
+
+    Évite de re-scraper un SIRET déjà enrichi dans une autre campagne et garantit
+    la cohérence (même téléphone, même email, même date_creation) entre campagnes."""
+    stmt = (
+        select(Lead)
+        .where(Lead.siret == siret, Lead.status == LeadStatus.ENRICHI)
+        .order_by(Lead.enriched_at.desc())
+        .limit(1)
+    )
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+    if existing is None:
+        return None
+    return {f: getattr(existing, f) for f in _REUSABLE_FIELDS if getattr(existing, f) is not None}
+
+
 async def update_lead_enriched(db: AsyncSession, lead: Lead, fields: dict) -> Lead:
     """Met à jour les champs enrichis et passe le lead en ENRICHI."""
     for key, value in fields.items():
@@ -95,3 +121,5 @@ async def update_lead_enriched(db: AsyncSession, lead: Lead, fields: dict) -> Le
     await db.commit()
     await db.refresh(lead)
     return lead
+
+
