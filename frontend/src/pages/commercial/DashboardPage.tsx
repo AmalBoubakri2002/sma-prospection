@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
-import { Typography, Button, Tag, Spin } from "antd";
+import { useEffect, useState, useCallback } from "react";
+import { Typography, Button, Tag, Spin, Badge } from "antd";
 import {
-  TeamOutlined, CalendarOutlined, RiseOutlined,
+  CheckCircleOutlined, PercentageOutlined, EditOutlined, StarOutlined,
   PlusOutlined, RocketOutlined, ClockCircleOutlined, LockOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "@/stores/authStore";
 import type { AuthUser } from "@/stores/authStore";
+import { useNotifications } from "@/hooks/useNotifications";
+import type { NotificationItem } from "@/hooks/useNotifications";
 import api from "@/utils/api";
 import { C, S, R } from "@/styles/tokens";
 
@@ -19,20 +21,45 @@ function displayFirstName(user: AuthUser | null): string {
 
 interface Campaign {
   id: string;
+  name?: string | null;
   codes_naf: string[];
   codes_postaux: string[];
   quota: number;
   leads_count: number;
-  status: "pending" | "running" | "done" | "failed";
+  status: string;
   created_at: string;
 }
 
-const STATUS_LABEL: Record<Campaign["status"], { label: string; color: string }> = {
-  pending: { label: "En attente",  color: "default" },
-  running: { label: "En cours",    color: "processing" },
-  done:    { label: "Terminée",    color: "success" },
-  failed:  { label: "Échouée",     color: "error" },
+interface LeadStats {
+  leads_a_valider: number;
+  emails_en_attente: number;
+  taux_validation: number | null;
+  taux_modification: number | null;
+  score_moyen: number | null;
+}
+
+const STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  pending:                  { label: "En attente",            color: "default"    },
+  running:                  { label: "En cours",              color: "processing" },
+  done:                     { label: "Terminée",              color: "success"    },
+  failed:                   { label: "Échouée",               color: "error"      },
+  enrichissement_pending:   { label: "Veille terminée",       color: "processing" },
+  enrichissement_done:      { label: "Enrichi",               color: "processing" },
+  enrichissement_failed:    { label: "Enrichissement échoué", color: "error"      },
+  scoring_pending:          { label: "Scoring en attente",    color: "processing" },
+  scoring_done:             { label: "Scoring terminé",       color: "success"    },
+  scoring_failed:           { label: "Scoring échoué",        color: "error"      },
+  redaction_pending:        { label: "Rédaction en cours",    color: "processing" },
+  redaction_done:           { label: "Emails prêts",          color: "success"    },
+  redaction_failed:         { label: "Rédaction échouée",     color: "error"      },
 };
+
+const LEADS_VIEWABLE_STATUSES = new Set([
+  "enrichissement_pending", "enrichissement_failed",
+  "scoring_pending", "scoring_done", "scoring_failed",
+  "redaction_pending", "redaction_done", "redaction_failed",
+  "en_attente_validation", "crm_pending", "completed",
+]);
 
 const { Title, Text } = Typography;
 
@@ -81,6 +108,7 @@ export default function CommercialDashboardPage() {
 
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
+  const [stats, setStats] = useState<LeadStats | null>(null);
 
   useEffect(() => {
     if (isPending) { setLoadingCampaigns(false); return; }
@@ -88,7 +116,20 @@ export default function CommercialDashboardPage() {
       .then((res) => setCampaigns(res.data))
       .catch(() => {})
       .finally(() => setLoadingCampaigns(false));
+    api.get<LeadStats>("/leads/stats")
+      .then((res) => setStats(res.data))
+      .catch(() => {});
   }, [isPending]);
+
+  // Rafraîchit les stats quand une notification EMAILS_PRETS arrive
+  const handleNotification = useCallback((notif: NotificationItem) => {
+    if (notif.type === "EMAILS_PRETS") {
+      api.get<LeadStats>("/leads/stats").then((res) => setStats(res.data)).catch(() => {});
+      api.get<Campaign[]>("/campaigns/").then((res) => setCampaigns(res.data)).catch(() => {});
+    }
+  }, []);
+
+  useNotifications(handleNotification);
 
   const now      = new Date();
   const hour     = now.getHours();
@@ -187,16 +228,34 @@ export default function CommercialDashboardPage() {
           {/* ── KPI cards ─────────────────────────────────────────── */}
           <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:28 }}>
             <KpiCard
-              icon={<TeamOutlined />}     label="Prospects actifs"    value={0}
+              icon={<CheckCircleOutlined />}
+              label="Leads à valider (scoring)"
+              value={stats ? stats.leads_a_valider : "—"}
               accent={C.indigo} iconBg="#eef2ff" iconColor={C.indigo}
             />
             <KpiCard
-              icon={<CalendarOutlined />} label="RDV cette semaine"   value={0}
-              accent={C.amber}  iconBg={C.amberBg} iconColor={C.amber}
+              icon={
+                <Badge count={stats?.emails_en_attente ?? 0} size="small" offset={[6, -4]}>
+                  <EditOutlined />
+                </Badge>
+              }
+              label="Emails en attente de validation"
+              value={stats ? stats.emails_en_attente : "—"}
+              accent={C.amber} iconBg={C.amberBg} iconColor={C.amber}
             />
             <KpiCard
-              icon={<RiseOutlined />}     label="Taux de conversion"  value="0%"
-              accent={C.green}  iconBg={C.greenBg} iconColor={C.green}
+              icon={<PercentageOutlined />}
+              label="Taux de validation emails"
+              value={stats?.taux_validation != null ? `${stats.taux_validation}%` : "—"}
+              accent={C.green} iconBg={C.greenBg} iconColor={C.green}
+            />
+            <KpiCard
+              icon={<StarOutlined />}
+              label="Score moyen des leads"
+              value={stats?.score_moyen != null
+                ? Number((stats.score_moyen * 100).toFixed(1))
+                : "—"}
+              accent="#7c3aed" iconBg="#f3f0ff" iconColor="#7c3aed"
             />
           </div>
 
@@ -276,37 +335,50 @@ export default function CommercialDashboardPage() {
             ) : (
               /* Campaign list */
               <div>
-                {campaigns.map((c) => (
-                  <div
-                    key={c.id}
-                    style={{
-                      padding: "16px 22px",
-                      borderBottom: `1px solid ${C.border}`,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: 12,
-                    }}
-                  >
-                    <div>
-                      <Text style={{ fontWeight: 600, color: C.navy, fontSize: 13.5 }}>
-                        {c.codes_naf.join(", ")}
-                      </Text>
-                      <Text style={{ display: "block", fontSize: 12, color: C.textMuted, marginTop: 2 }}>
-                        {c.codes_postaux.join(", ")} · {new Date(c.created_at).toLocaleDateString("fr-FR")}
-                      </Text>
+                {campaigns.map((c) => {
+                  const canViewLeads = LEADS_VIEWABLE_STATUSES.has(c.status);
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => canViewLeads && navigate(`/commercial/campagnes/${c.id}/leads`)}
+                      style={{
+                        padding: "16px 22px",
+                        borderBottom: `1px solid ${C.border}`,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: 12,
+                        cursor: canViewLeads ? "pointer" : "default",
+                        transition: "background 0.15s",
+                      }}
+                      onMouseEnter={(e) => { if (canViewLeads) (e.currentTarget as HTMLDivElement).style.background = C.bg; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = ""; }}
+                    >
+                      <div>
+                        <Text style={{ fontWeight: 600, color: C.navy, fontSize: 13.5 }}>
+                          {c.name ?? c.codes_naf.join(", ")}
+                        </Text>
+                        <Text style={{ display: "block", fontSize: 12, color: C.textMuted, marginTop: 2 }}>
+                          {c.name ? c.codes_naf.slice(0, 2).join(", ") + " · " : ""}{c.codes_postaux.slice(0, 3).join(", ")} · {new Date(c.created_at).toLocaleDateString("fr-FR")}
+                        </Text>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                        <Text style={{ fontSize: 13, color: C.textMuted }}>
+                          <span style={{ fontWeight: 700, color: C.navy }}>{c.leads_count}</span> / {c.quota} leads
+                        </Text>
+                        <Tag color={STATUS_LABEL[c.status]?.color ?? "default"}>
+                          {STATUS_LABEL[c.status]?.label ?? c.status}
+                        </Tag>
+                        {canViewLeads && (
+                          <Text style={{ fontSize: 12, color: C.indigo, fontWeight: 600 }}>
+                            Voir les leads →
+                          </Text>
+                        )}
+                      </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                      <Text style={{ fontSize: 13, color: C.textMuted }}>
-                        <span style={{ fontWeight: 700, color: C.navy }}>{c.leads_count}</span> / {c.quota} leads
-                      </Text>
-                      <Tag color={STATUS_LABEL[c.status]?.color ?? "default"}>
-                        {STATUS_LABEL[c.status]?.label ?? c.status}
-                      </Tag>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

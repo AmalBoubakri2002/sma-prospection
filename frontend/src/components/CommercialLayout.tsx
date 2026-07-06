@@ -4,11 +4,10 @@ import type { MenuProps } from "antd";
 import {
   DashboardOutlined,
   RocketOutlined,
-  TeamOutlined,
-  CalendarOutlined,
   LogoutOutlined,
   UserOutlined,
   DownOutlined,
+  MailOutlined,
 } from "@ant-design/icons";
 import { useAuthStore } from "@/stores/authStore";
 import NotificationBell from "@/components/NotificationBell";
@@ -30,9 +29,8 @@ function getNavItems(isActive: boolean): NavItem[] {
   ];
   if (isActive) {
     items.push(
-      { key: "campagnes", label: "Campagnes", icon: <RocketOutlined />,   path: "/commercial/campagnes/nouvelle" },
-      { key: "prospects", label: "Prospects", icon: <TeamOutlined />,     path: "/commercial/prospects" },
-      { key: "agenda",    label: "Agenda",    icon: <CalendarOutlined />, path: "/commercial/agenda" },
+      { key: "campagnes",  label: "Campagnes",  icon: <RocketOutlined />, path: "/commercial/campagnes/nouvelle" },
+      { key: "validation", label: "Validation", icon: <MailOutlined />,   path: "/commercial/validation" },
     );
   }
   items.push({ key: "profil", label: "Profil", icon: <UserOutlined />, path: "/commercial/profil" });
@@ -91,13 +89,21 @@ export default function CommercialLayout() {
     }
   };
 
+  // Cliquer sur une notification "Emails prêts" navigue vers la file de validation.
+  const handleClickNotification = (notification: NotificationItem) => {
+    if (notification.type === "EMAILS_PRETS") {
+      navigate("/commercial/validation");
+    }
+  };
+
   const { notifications, markRead } = useNotifications(handleNotification);
 
   const navItems = getNavItems(user?.status === "ACTIVE");
 
   const activeKey = navItems.find((item) => {
     if (item.path === "/commercial") return location.pathname === "/commercial";
-    if (item.key === "campagnes") return location.pathname.startsWith("/commercial/campagnes");
+    if (item.key === "campagnes")  return location.pathname.startsWith("/commercial/campagnes");
+    if (item.key === "validation") return location.pathname.startsWith("/commercial/validation");
     return location.pathname.startsWith(item.path);
   })?.key;
 
@@ -201,7 +207,11 @@ export default function CommercialLayout() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
 
           {/* Notifications */}
-          <NotificationBell notifications={notifications} onMarkRead={markRead} />
+          <NotificationBell
+            notifications={notifications}
+            onMarkRead={markRead}
+            onClickNotification={handleClickNotification}
+          />
 
           {/* User menu */}
           <Dropdown menu={{ items: userMenu }} trigger={["click"]} placement="bottomRight">

@@ -1,4 +1,5 @@
 services:
+
   postgres:
     image: postgres:16-alpine
     container_name: sma_postgres
@@ -17,6 +18,59 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  backend:
+    image: sma-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sma_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sma_user}:${POSTGRES_PASSWORD:-sma_password}@postgres:5432/${POSTGRES_DB:-sma_db}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\" 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # Tous les workers partagent la même image "sma-backend" buildée une seule fois.
+
+  worker-pipeline:
+    image: sma-backend
+    container_name: sma_worker_pipeline
+    restart: unless-stopped
+    command: python -m app.workers.worker_pipeline
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sma_user}:${POSTGRES_PASSWORD:-sma_password}@postgres:5432/${POSTGRES_DB:-sma_db}
+      DEBUG: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  orchestrateur:
+    image: sma-backend
+    container_name: sma_orchestrateur
+    restart: unless-stopped
+    command: python -m app.workers.orchestrateur
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sma_user}:${POSTGRES_PASSWORD:-sma_password}@postgres:5432/${POSTGRES_DB:-sma_db}
+      DEBUG: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:

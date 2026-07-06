@@ -1,9 +1,6 @@
 import asyncio
-
 import httpx
-
 from app.core.config import settings
-
 
 class SireneAPIError(Exception):
     pass
@@ -27,11 +24,6 @@ def _or_group(field: str, values: list[str], period: bool) -> str:
 def build_query(
     codes_naf: list[str], codes_postaux: list[str], tranches_effectifs: list[str]
 ) -> str:
-    """Construit le paramètre `q` de l'API Sirene. Vérifié empiriquement contre
-    l'API réelle (juin 2026) : activitePrincipaleEtablissement et
-    etatAdministratifEtablissement doivent être enveloppés dans periode(...),
-    mais codePostalEtablissement et trancheEffectifsEtablissement non
-    (sinon l'API renvoie une 400 "Erreur de syntaxe dans le paramètre q")."""
     groups = [
         _or_group("activitePrincipaleEtablissement", codes_naf, period=True),
         _or_group("codePostalEtablissement", codes_postaux, period=False),
@@ -58,10 +50,6 @@ class SireneClient:
         tranches_effectifs: list[str],
         quota: int,
     ) -> tuple[list[dict], int]:
-        """Retourne (établissements, total_sirene).
-
-        total_sirene est le nombre total d'établissements correspondant aux critères
-        dans SIRENE, indépendamment du quota. Vaut 0 si l'API ne renvoie pas cette info."""
         if not self.api_key:
             raise SireneConfigError("INSEE_API_KEY non configurée (voir backend/.env)")
 
@@ -115,7 +103,9 @@ class SireneClient:
         for _ in range(max_retries):
             response = await client.get(path, params=params)
             if response.status_code == 429:
-                retry_after = float(response.headers.get("Retry-After", 5))
+                # On plafonne à 30s pour ne pas bloquer le worker indéfiniment
+                # même si l'API demande un délai plus long.
+                retry_after = min(float(response.headers.get("Retry-After", 5)), 30.0)
                 await asyncio.sleep(retry_after)
                 continue
             return response

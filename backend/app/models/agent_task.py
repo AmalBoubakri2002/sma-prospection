@@ -17,10 +17,15 @@ class AgentTaskStatus:
 class AgentName:
     VEILLE = "veille"
     ENRICHISSEMENT = "enrichissement"
+    SCORING = "scoring"
+    REDACTION = "redaction"
+    CRM = "crm"
+    PIPELINE = "pipeline"               # Graphe LangGraph complet (orchestrateur principal)
+    PIPELINE_RESUME = "pipeline_resume" # Reprise du graphe après validation HITL
 
 
 class AgentTask(Base):
-    """File de tâches entre l'orchestrateur et les workers agents 
+    """File de tâches entre l'orchestrateur et les workers agents.
     Chaque worker fait du polling sur cette table pour les tâches qui le concernent."""
 
     __tablename__ = "agent_tasks"

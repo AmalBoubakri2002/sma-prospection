@@ -55,14 +55,26 @@ class RechercheEntreprisesClient:
         params: dict,
         max_retries: int = 3,
     ) -> httpx.Response:
+        """Retente sur 429 et sur les erreurs réseau transitoires (timeout, connexion
+        réinitialisée) — un blip ponctuel de l'API ne doit pas vider un lead entièrement."""
         response: httpx.Response
+        last_exc: httpx.RequestError | None = None
         for attempt in range(max_retries):
-            response = await client.get(path, params=params)
+            try:
+                response = await client.get(path, params=params)
+            except (httpx.TimeoutException, httpx.RequestError) as exc:
+                last_exc = exc
+                await asyncio.sleep(min(2**attempt, 5))
+                continue
             if response.status_code == 429:
                 retry_after = float(response.headers.get("Retry-After", 2))
                 await asyncio.sleep(retry_after)
                 continue
             return response
+        if last_exc is not None:
+            raise RechercheEntreprisesError(
+                f"Erreur réseau après {max_retries} tentatives : {last_exc}"
+            ) from last_exc
         return response
 
 
@@ -120,19 +132,29 @@ def extract_dirigeant_principal(result: dict) -> dict:
 
 
 def extract_contact_info(result: dict) -> dict:
-    """Extrait téléphone, site web, CA et résultat net depuis le résultat de l'API."""
+    """Extrait téléphone, site web, géoloc, CA, CA N-1 et résultat net depuis le résultat de l'API."""
     siege = result.get("siege", {})
 
     telephone = siege.get("telephone") or None
     site_web = siege.get("site_internet") or None
 
-    # finances: {"2024": {"ca": 1500000, "resultat_net": 80000}, ...}
+    def _to_float(value: object) -> float | None:
+        try:
+            return float(value) if value is not None else None
+        except (ValueError, TypeError):
+            return None
+
+    latitude = _to_float(siege.get("latitude"))
+    longitude = _to_float(siege.get("longitude"))
+
+    # finances: {"2024": {"ca": 1500000, "resultat_net": 80000}, "2023": {...}, ...}
     ca: int | None = None
+    ca_n1: int | None = None
     resultat_net: int | None = None
     finances = result.get("finances") or {}
     if isinstance(finances, dict) and finances:
-        latest_year = max(finances.keys())
-        year_data = finances[latest_year] or {}
+        years = sorted(finances.keys(), reverse=True)
+        year_data = finances[years[0]] or {}
         raw_ca = year_data.get("ca")
         raw_rn = year_data.get("resultat_net")
         try:
@@ -143,11 +165,22 @@ def extract_contact_info(result: dict) -> dict:
             resultat_net = int(float(raw_rn)) if raw_rn is not None else None
         except (ValueError, TypeError):
             resultat_net = None
+        # CA N-1 depuis la deuxième année disponible
+        if len(years) >= 2:
+            prev_data = finances[years[1]] or {}
+            raw_ca_n1 = prev_data.get("ca")
+            try:
+                ca_n1 = int(float(raw_ca_n1)) if raw_ca_n1 is not None else None
+            except (ValueError, TypeError):
+                ca_n1 = None
 
     return {
         "telephone": telephone,
         "site_web": site_web,
+        "latitude": latitude,
+        "longitude": longitude,
         "ca": ca,
+        "ca_n1": ca_n1,
         "resultat_net": resultat_net,
     }
 

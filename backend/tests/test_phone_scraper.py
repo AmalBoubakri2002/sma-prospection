@@ -33,10 +33,10 @@ def test_normalize_phone_dots_separator():
     assert _normalize_phone("01.23.45.67.89") == "01 23 45 67 89"
 
 
-def test_normalize_phone_unrecognized_returns_stripped():
-    # Un numéro qui n'est pas un format français standard est retourné tel quel (strippé)
+def test_normalize_phone_foreign_returns_none():
+    # Un numéro étranger (non français) doit être rejeté — on ne stocke que les numéros FR
     result = _normalize_phone("  +1-800-555-1234  ")
-    assert result == "+1-800-555-1234"
+    assert result is None
 
 
 # ── _pick_best_phone ──────────────────────────────────────────────────────────

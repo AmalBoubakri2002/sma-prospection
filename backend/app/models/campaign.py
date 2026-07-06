@@ -21,6 +21,12 @@ class Campaign(Base):
     tranches_effectifs: Mapped[list] = mapped_column(JSON) # ["12", "21", "22"]
     quota: Mapped[int] = mapped_column(Integer, default=50)
 
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Seuil de qualification — leads avec score >= score_minimum passent en QUALIFIE
+    # 0.7 = seuil 70/100 du dossier de conception (score XGBoost ∈ [0, 1])
+    score_minimum: Mapped[float] = mapped_column(default=0.5)
+
     # Résultats
     estimated_prospects: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(50), default="pending")

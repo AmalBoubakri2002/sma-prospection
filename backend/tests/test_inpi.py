@@ -1,4 +1,9 @@
-from app.agents.enrichissement.inpi import _extract_latest_finances, _to_int
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from app.agents.enrichissement import inpi
+from app.agents.enrichissement.inpi import InpiAuthError, _extract_latest_finances, _login, _to_int
 
 
 def test_extract_latest_finances_nominal():
@@ -97,3 +102,62 @@ def test_to_int_zero():
 def test_to_int_negative():
     assert _to_int(-50000) == -50000
     assert _to_int("-50000.5") == -50000
+
+
+# ── login (auth par identifiants, pas de clé API statique) ─────────────────────
+
+@pytest.fixture(autouse=True)
+def _reset_token_cache():
+    """Le token est mis en cache au niveau module — évite qu'un test pollue le suivant."""
+    inpi._cached_token = None
+    yield
+    inpi._cached_token = None
+
+
+@pytest.mark.anyio
+async def test_login_missing_credentials_raises_auth_error():
+    with patch.object(inpi.settings, "INPI_USERNAME", ""), patch.object(inpi.settings, "INPI_PASSWORD", ""):
+        with pytest.raises(InpiAuthError, match="INPI_USERNAME"):
+            await _login(AsyncMock())
+
+
+@pytest.mark.anyio
+async def test_login_success_caches_token():
+    fake_response = MagicMock(status_code=200)
+    fake_response.json.return_value = {"token": "abc123"}
+    client = AsyncMock()
+    client.post = AsyncMock(return_value=fake_response)
+
+    with patch.object(inpi.settings, "INPI_USERNAME", "user"), patch.object(inpi.settings, "INPI_PASSWORD", "pass"):
+        token = await _login(client)
+
+    assert token == "abc123"
+    assert inpi._cached_token == "abc123"
+
+    # Un second appel réutilise le cache, sans refaire de requête de login.
+    token2 = await _login(client)
+    assert token2 == "abc123"
+    client.post.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_login_non_200_raises_auth_error():
+    fake_response = MagicMock(status_code=401, text="identifiants invalides")
+    client = AsyncMock()
+    client.post = AsyncMock(return_value=fake_response)
+
+    with patch.object(inpi.settings, "INPI_USERNAME", "user"), patch.object(inpi.settings, "INPI_PASSWORD", "pass"):
+        with pytest.raises(InpiAuthError, match="401"):
+            await _login(client)
+
+
+@pytest.mark.anyio
+async def test_login_response_without_token_field_raises():
+    fake_response = MagicMock(status_code=200)
+    fake_response.json.return_value = {"unexpected": "shape"}
+    client = AsyncMock()
+    client.post = AsyncMock(return_value=fake_response)
+
+    with patch.object(inpi.settings, "INPI_USERNAME", "user"), patch.object(inpi.settings, "INPI_PASSWORD", "pass"):
+        with pytest.raises(InpiAuthError, match="token"):
+            await _login(client)

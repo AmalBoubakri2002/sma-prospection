@@ -37,6 +37,33 @@ async def get_latest_task_for_campaign(
     return result.scalar_one_or_none()
 
 
+async def get_latest_active_task(
+    db: AsyncSession, campaign_id: uuid.UUID
+) -> AgentTask | None:
+    """Retourne la tâche PENDING ou RUNNING la plus récente, tous agents confondus.
+    Utilisé par le endpoint /status pour afficher l'agent actuellement actif."""
+    result = await db.execute(
+        select(AgentTask)
+        .where(
+            AgentTask.campaign_id == campaign_id,
+            AgentTask.status.in_([AgentTaskStatus.PENDING, AgentTaskStatus.RUNNING]),
+        )
+        .order_by(AgentTask.created_at.desc())
+        .limit(1)
+    )
+    active = result.scalar_one_or_none()
+    if active:
+        return active
+    # Aucune tâche active → retourner la dernière tâche terminée (pour l'historique)
+    result = await db.execute(
+        select(AgentTask)
+        .where(AgentTask.campaign_id == campaign_id)
+        .order_by(AgentTask.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 async def mark_running(db: AsyncSession, task: AgentTask) -> AgentTask:
     task.status = AgentTaskStatus.RUNNING
     task.attempts += 1

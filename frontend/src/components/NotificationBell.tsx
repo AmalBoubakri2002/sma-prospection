@@ -6,9 +6,10 @@ import { C } from "@/styles/tokens";
 interface Props {
   notifications: NotificationItem[];
   onMarkRead: (id: string) => void;
+  onClickNotification?: (notification: NotificationItem) => void;
 }
 
-export default function NotificationBell({ notifications, onMarkRead }: Props) {
+export default function NotificationBell({ notifications, onMarkRead, onClickNotification }: Props) {
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   const dropdown = (
@@ -36,12 +37,15 @@ export default function NotificationBell({ notifications, onMarkRead }: Props) {
             key={n.id}
             role="button"
             tabIndex={0}
-            onClick={() => !n.is_read && onMarkRead(n.id)}
+            onClick={() => {
+              if (!n.is_read) onMarkRead(n.id);
+              onClickNotification?.(n);
+            }}
             style={{
               padding: "12px 16px",
               borderBottom: `1px solid ${C.border}`,
               background: n.is_read ? C.surface : "#eef3fc",
-              cursor: n.is_read ? "default" : "pointer",
+              cursor: "pointer",
             }}
           >
             <div style={{ fontWeight: 600, fontSize: 13, color: C.navy, marginBottom: 3 }}>{n.title}</div>

@@ -54,23 +54,11 @@ def upgrade() -> None:
            OR email ~* '^(spain|espagne|london|berlin|madrid|amsterdam|dubai|singapore|brussels|rome|milan|istanbul|stockholm|oslo|copenhagen|warsaw|vienna|zurich|prague|budapest|uk|us|usa|de|es|it|nl|pt|pl|se|no|dk|fi|be|at|ch|cz|hu)@'
     """)
 
-    # ── 3. Recalculer score_intent pour les lignes NULL ───────────────────────
-    # Formule identique à _compute_score_intent() dans agent.py :
-    # (email×2 + telephone + site_web + prenom_dirigeant + ca) / 6.0
-    op.execute("""
-        UPDATE leads
-        SET score_intent = ROUND(
-            (
-                CASE WHEN email           IS NOT NULL THEN 2 ELSE 0 END +
-                CASE WHEN telephone       IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN site_web        IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN prenom_dirigeant IS NOT NULL THEN 1 ELSE 0 END +
-                CASE WHEN ca              IS NOT NULL THEN 1 ELSE 0 END
-            )::numeric / 6.0,
-            4
-        )
-        WHERE score_intent IS NULL AND status = 'ENRICHI'
-    """)
+    # ── 3. Supprimer la colonne score_intent ─────────────────────────────────
+    # score_intent est une valeur dérivée des autres champs (email, telephone,
+    # site_web, prenom_dirigeant, ca). Elle est désormais calculée à la volée
+    # au moment du scoring, sans être stockée en base.
+    op.drop_column("leads", "score_intent")
 
 
 def downgrade() -> None:

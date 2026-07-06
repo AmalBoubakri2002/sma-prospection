@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.DS_Store
+.env
+tests/
+
+# Fichiers de travail pour la génération/entraînement du dataset — jamais lus
+# au runtime (l'app ne charge que models/*.joblib et models/*.json). Le stock
+# SIRENE brut fait ~10 Go et gonflait le contexte de build à chaque `docker
+# build` pour rien.
+ml/data/
+ml/siret_cache.json
+ml/*.csv
+ml/representativity_report.txt

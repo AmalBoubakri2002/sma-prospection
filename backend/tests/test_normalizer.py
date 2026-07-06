@@ -82,7 +82,6 @@ def test_normalize_company_name_empty_returns_empty():
 
 
 def test_normalize_company_name_parentheses_in_slug():
-    # Le nom avec parenthèses est géré dans email_guesser mais pas ici — vérifier qu'il ne plante pas
     result = normalize_company_name("CANDELA (CANDELA) SARL")
     assert isinstance(result, str)
     assert len(result) > 0

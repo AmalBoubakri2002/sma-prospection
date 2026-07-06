@@ -19,9 +19,20 @@ class LeadResponse(BaseModel):
     nom_dirigeant: str | None
     titre_dirigeant: str | None
     ca: int | None
+    ca_n1: int | None
     resultat_net: int | None
+    score_intent: float | None
     latitude: float | None
     longitude: float | None
+    # Champs scoring
+    score: float | None
+    label_scoring: str | None
+    scored_at: datetime | None
+    shap_explication: str | None
+    # Champs rédaction
+    objet_email: str | None
+    contenu_email: str | None
+    email_genere_at: datetime | None
     status: str
     created_at: datetime
     enriched_at: datetime | None

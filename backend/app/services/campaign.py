@@ -12,11 +12,13 @@ async def create_campaign(
 ) -> Campaign:
     campaign = Campaign(
         commercial_id=commercial_id,
+        name=data.name,
         codes_naf=data.codes_naf,
         codes_postaux=data.codes_postaux,
         tranches_effectifs=data.tranches_effectifs,
         quota=data.quota,
         estimated_prospects=data.estimated_prospects,
+        score_minimum=data.score_minimum,
     )
     db.add(campaign)
     await db.commit()

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Typography, Select, InputNumber, Button, App, Tag } from "antd";
+import { Typography, Select, InputNumber, Button, App, Tag, Input } from "antd";
 import {
   AimOutlined, SearchOutlined,
   ArrowLeftOutlined, ThunderboltOutlined, PlusOutlined,
@@ -100,12 +100,12 @@ export default function NewCampaignPage() {
   const navigate    = useNavigate();
   const { message } = App.useApp();
 
+  const [campaignName,      setCampaignName]       = useState("");
   const [codesNaf,          setCodesNaf]          = useState<string[]>(["62.01Z", "62.02A"]);
   const [codesPostaux,      setCodesPostaux]       = useState<string[]>([]);
   const [cpInput,           setCpInput]            = useState("");
   const [tranchesEffectifs, setTranchesEffectifs]  = useState<string[]>(["12", "21"]);
   const [quota,             setQuota]              = useState(50);
-  const [scoreMinimum,      setScoreMinimum]       = useState(0);
   const [launching,         setLaunching]          = useState(false);
 
   const toggle = (list: string[], val: string, set: (v: string[]) => void) =>
@@ -126,11 +126,11 @@ export default function NewCampaignPage() {
     setLaunching(true);
     try {
       const { data: campaign } = await api.post("/campaigns/", {
+        name:               campaignName.trim() || null,
         codes_naf:          codesNaf,
         codes_postaux:      codesPostaux,
         tranches_effectifs: tranchesEffectifs,
         quota,
-        score_minimum:      scoreMinimum,
         estimated_prospects: 0,
       });
       await api.post(`/campaigns/${campaign.id}/start`);
@@ -144,11 +144,11 @@ export default function NewCampaignPage() {
   };
 
   const summaryRows = [
-    { key: "Codes NAF",     value: codesNaf.length ? `${codesNaf.length} code(s)` : "—" },
-    { key: "Zones",         value: codesPostaux.length ? codesPostaux.slice(0, 3).join(", ") + (codesPostaux.length > 3 ? "…" : "") : "—" },
-    { key: "Effectifs",     value: getTranchesLabel(tranchesEffectifs) },
-    { key: "Quota",         value: `${quota} prospects max` },
-    { key: "Score minimum", value: `${scoreMinimum} / 100` },
+    { key: "Nom",       value: campaignName.trim() || "—" },
+    { key: "Codes NAF", value: codesNaf.length ? `${codesNaf.length} code(s)` : "—" },
+    { key: "Zones",     value: codesPostaux.length ? codesPostaux.slice(0, 3).join(", ") + (codesPostaux.length > 3 ? "…" : "") : "—" },
+    { key: "Effectifs", value: getTranchesLabel(tranchesEffectifs) },
+    { key: "Quota",     value: `${quota} prospects max` },
   ];
 
   const card: React.CSSProperties = {
@@ -193,6 +193,21 @@ export default function NewCampaignPage() {
 
         {/* ── Left : Form ───────────────────────────────────── */}
         <div style={{ flex: "1 1 540px", minWidth: 0 }}>
+
+          {/* Section 0 — Nom de la campagne */}
+          <div style={card}>
+            <SectionHeader icon={<AimOutlined />} title="Nom de la campagne (optionnel)" />
+            <Input
+              size="large"
+              placeholder="ex : Prospection PME Île-de-France — Juin 2026"
+              maxLength={255}
+              value={campaignName}
+              onChange={e => setCampaignName(e.target.value)}
+            />
+            <Text style={{ fontSize: 12, color: C.textFaint, marginTop: 6, display: "block" }}>
+              Un nom descriptif facilite le suivi dans le tableau de bord.
+            </Text>
+          </div>
 
           {/* Section 1 — Secteur d'activité */}
           <div style={card}>
@@ -298,29 +313,6 @@ export default function NewCampaignPage() {
                 style={{ width: 110 }}
               />
             </div>
-          </div>
-
-          {/* Section 5 — Score minimum */}
-          <div style={card}>
-            <SectionHeader icon={<AimOutlined />} title="Score minimum de qualification" />
-
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <Text style={{ fontSize: 13, fontWeight: 600, color: C.text }}>
-                Score minimum requis pour retenir un prospect
-              </Text>
-              <InputNumber
-                min={0} max={100} step={5}
-                value={scoreMinimum}
-                onChange={v => setScoreMinimum(v ?? 0)}
-                size="large"
-                style={{ width: 110 }}
-                formatter={v => `${v} / 100`}
-                parser={v => Number(v?.replace(" / 100", "") ?? 0)}
-              />
-            </div>
-            <Text style={{ fontSize: 12, color: C.textFaint, marginTop: 8, display: "block" }}>
-              Seuls les prospects avec un score ≥ à cette valeur seront conservés.
-            </Text>
           </div>
 
         </div>

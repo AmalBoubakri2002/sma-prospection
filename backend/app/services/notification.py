@@ -68,6 +68,19 @@ async def notify_account_rejected(db: AsyncSession, commercial: User) -> None:
     )
 
 
+async def notify_emails_prets(
+    db: AsyncSession, commercial_id: uuid.UUID, nb_emails: int
+) -> None:
+    """Notifie le commercial que ses emails sont prêts à valider."""
+    await create_notification(
+        db,
+        recipient_id=commercial_id,
+        type=NotificationType.EMAILS_PRETS,
+        title="Emails prêts à valider",
+        message=f"{nb_emails} email{'s' if nb_emails > 1 else ''} généré{'s' if nb_emails > 1 else ''} — en attente de votre validation.",
+    )
+
+
 async def list_notifications(db: AsyncSession, recipient_id: uuid.UUID) -> list[Notification]:
     result = await db.execute(
         select(Notification)

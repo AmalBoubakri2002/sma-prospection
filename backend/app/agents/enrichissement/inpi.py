@@ -1,16 +1,22 @@
-"""Client pour l'API open data INPI — comptes annuels par SIREN.
+"""Client pour l'API RNE INPI — comptes annuels par SIREN.
 
-Endpoint : https://data.inpi.fr/entreprises/{siren}/comptes
-Gratuit, sans authentification, rate-limit généreux.
-Retourne le CA, résultat net et effectif pour les entreprises qui déposent
-leurs comptes (SA, SAS, SARL principalement).
+Non fonctionnel en pratique : l'endpoint JSON ciblé est bloqué par Cloudflare ;
+le seul accès réel (API RNE) renvoie un PDF de bilan, dont le parsing n'est pas
+implémenté. get_finances_from_siren lève donc toujours InpiError — géré par
+l'appelant (agent.py), qui continue sans CA plutôt que d'échouer l'enrichissement.
+
+Authentification : login (INPI_USERNAME / INPI_PASSWORD dans backend/.env) contre
+le SSO du registre national, qui renvoie un token Bearer temporaire.
 """
 
 import asyncio
 
 import httpx
 
+from app.core.config import settings
+
 BASE_URL = "https://data.inpi.fr"
+SSO_LOGIN_URL = "https://registre-national-entreprises.inpi.fr/api/sso/login"
 REQUEST_DELAY_SECONDS = 0.3
 
 
@@ -18,15 +24,59 @@ class InpiError(Exception):
     pass
 
 
+class InpiAuthError(InpiError):
+    """Login échoué (identifiants invalides ou absents) — pas la peine de retenter."""
+
+
+# Cache du token en mémoire (pas de TTL documenté par l'INPI) ; _login_lock évite
+# des logins concurrents quand plusieurs leads sont traités en parallèle.
+_cached_token: str | None = None
+_login_lock = asyncio.Lock()
+
+
+async def _login(client: httpx.AsyncClient) -> str:
+    global _cached_token
+
+    async with _login_lock:
+        if _cached_token is not None:
+            return _cached_token
+
+        if not settings.INPI_USERNAME or not settings.INPI_PASSWORD:
+            raise InpiAuthError(
+                "INPI_USERNAME / INPI_PASSWORD non configurés dans backend/.env "
+                "(voir 'Mes accès API' > 'Accès API RNE' sur data.inpi.fr)"
+            )
+
+        response = await client.post(
+            SSO_LOGIN_URL,
+            json={"username": settings.INPI_USERNAME, "password": settings.INPI_PASSWORD},
+            timeout=10.0,
+        )
+        if response.status_code != 200:
+            raise InpiAuthError(f"Login INPI échoué ({response.status_code}) : {response.text[:200]}")
+
+        token = response.json().get("token")
+        if not token:
+            raise InpiAuthError("Login INPI réussi mais réponse sans champ 'token'")
+
+        _cached_token = token
+        return token
+
+
 async def get_finances_from_siren(siren: str) -> dict:
-    """Retourne {'ca': int|None, 'resultat_net': int|None} pour un SIREN."""
+    """Retourne {'ca': int|None, 'resultat_net': int|None, 'ca_n1': int|None} pour un SIREN."""
     url = f"{BASE_URL}/entreprises/{siren}/comptes"
-    async with httpx.AsyncClient(
-        headers={"Accept": "application/json"},
-        timeout=10.0,
-        follow_redirects=True,
-    ) as client:
-        response = await _get_with_retry(client, url)
+
+    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+        token = await _login(client)
+        response = await _get_with_retry(client, url, token)
+
+        if response.status_code in (401, 403):
+            # Token expiré/révoqué : on en redemande un et on retente une fois.
+            global _cached_token
+            _cached_token = None
+            token = await _login(client)
+            response = await _get_with_retry(client, url, token)
 
     await asyncio.sleep(REQUEST_DELAY_SECONDS)
 
@@ -83,11 +133,12 @@ def _to_int(value: object) -> int | None:
 
 
 async def _get_with_retry(
-    client: httpx.AsyncClient, url: str, max_retries: int = 3
+    client: httpx.AsyncClient, url: str, token: str, max_retries: int = 3
 ) -> httpx.Response:
+    headers = {"Accept": "application/json", "Authorization": f"Bearer {token}"}
     response: httpx.Response
     for _ in range(max_retries):
-        response = await client.get(url)
+        response = await client.get(url, headers=headers)
         if response.status_code == 429:
             await asyncio.sleep(float(response.headers.get("Retry-After", 2)))
             continue

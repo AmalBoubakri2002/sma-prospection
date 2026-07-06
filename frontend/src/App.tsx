@@ -10,6 +10,8 @@ import CommercialLayout from "@/components/CommercialLayout";
 import CommercialDashboardPage from "@/pages/commercial/DashboardPage";
 import NewCampaignPage from "@/pages/commercial/NewCampaignPage";
 import ProfilePage from "@/pages/commercial/ProfilePage";
+import CampaignLeadsPage from "@/pages/commercial/CampaignLeadsPage";
+import ValidationQueuePage from "@/pages/commercial/ValidationQueuePage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import RequireActiveAccount from "@/components/RequireActiveAccount";
 
@@ -52,6 +54,15 @@ export default function App() {
           element={
             <RequireActiveAccount>
               <NewCampaignPage />
+            </RequireActiveAccount>
+          }
+        />
+        <Route path="campagnes/:campaignId/leads" element={<CampaignLeadsPage />} />
+        <Route
+          path="validation"
+          element={
+            <RequireActiveAccount>
+              <ValidationQueuePage />
             </RequireActiveAccount>
           }
         />

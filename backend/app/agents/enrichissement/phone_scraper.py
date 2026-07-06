@@ -4,13 +4,16 @@ Patterns supportés (numéros français) :
   - 01 23 45 67 89  /  01.23.45.67.89  /  0123456789
   - +33 1 23 45 67 89  /  +33123456789
   - 0033 1 23 45 67 89
-Filtre les numéros probablement non-professionnels (portable 06/07 si pas de
-fixe disponible, mais les garde en fallback).
+
+Validation et normalisation via la librairie `phonenumbers` (Google libphonenumber,
+Apache 2.0). Préfère les fixes (01-05, 09) aux mobiles (06-07).
 """
 
 import re
 
 import httpx
+import phonenumbers
+from phonenumbers import PhoneNumberFormat, PhoneNumberType
 
 _USER_AGENT = "Mozilla/5.0 (compatible; SMA-ProspectAI/1.0)"
 _TIMEOUT = 8.0
@@ -30,29 +33,49 @@ _PHONE_RE = re.compile(
     re.VERBOSE,
 )
 
-# Indicatifs fixes métropolitains : 01-05 et 09
-_FIXE_RE = re.compile(r"^(?:\+33|0033)?[\s.\-]?\(?0?\)?[\s.\-]?[1-5,9]")
+
+def _normalize_phone(raw: str) -> str | None:
+    """Valide et normalise un numéro français ; retourne None si invalide ou non-français."""
+    try:
+        parsed = phonenumbers.parse(raw, "FR")
+    except phonenumbers.NumberParseException:
+        return None
+    if not phonenumbers.is_valid_number(parsed):
+        return None
+    if parsed.country_code != 33:
+        return None
+    return phonenumbers.format_number(parsed, PhoneNumberFormat.NATIONAL)
 
 
-def _normalize_phone(raw: str) -> str:
-    """Normalise en format 0X XX XX XX XX."""
-    digits = re.sub(r"\D", "", raw)
-    if digits.startswith("33") and len(digits) == 11:
-        digits = "0" + digits[2:]
-    if digits.startswith("0033") and len(digits) == 13:
-        digits = "0" + digits[4:]
-    if len(digits) == 10:
-        return " ".join(digits[i:i+2] for i in range(0, 10, 2))
-    return raw.strip()
+def _is_fixe(parsed: phonenumbers.PhoneNumber) -> bool:
+    return phonenumbers.number_type(parsed) in (
+        PhoneNumberType.FIXED_LINE,
+        PhoneNumberType.FIXED_LINE_OR_MOBILE,
+        PhoneNumberType.VOIP,  # 09 (internet/box) — considérés fixes pour la prospection
+    )
 
 
 def _pick_best_phone(candidates: list[str]) -> str | None:
-    """Préfère un fixe (01-05, 09) plutôt qu'un mobile (06-07)."""
+    """Valide chaque candidat via phonenumbers et préfère les fixes."""
     if not candidates:
         return None
-    fixe = [p for p in candidates if _FIXE_RE.match(p)]
-    chosen = fixe[0] if fixe else candidates[0]
-    return _normalize_phone(chosen)
+
+    validated: list[tuple[str, bool]] = []  # (formatted, is_fixe)
+    for raw in candidates:
+        try:
+            parsed = phonenumbers.parse(raw, "FR")
+        except phonenumbers.NumberParseException:
+            continue
+        if not phonenumbers.is_valid_number(parsed):
+            continue
+        formatted = phonenumbers.format_number(parsed, PhoneNumberFormat.NATIONAL)
+        validated.append((formatted, _is_fixe(parsed)))
+
+    if not validated:
+        return None
+
+    fixe = [num for num, is_f in validated if is_f]
+    return fixe[0] if fixe else validated[0][0]
 
 
 async def scrape_phone_from_homepage(site_web: str) -> str | None:
