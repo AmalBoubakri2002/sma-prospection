@@ -4,7 +4,7 @@ import pytest
 
 from app.agents.enrichissement.email_scraper import (
     _EMAIL_RE,
-    _GENERIC_PREFIXES,
+    _NONFUNCTIONAL_PREFIXES,
     scrape_email_from_homepage,
 )
 
@@ -22,14 +22,21 @@ def test_email_regex_ignores_html_entities():
     assert not any("example.com" in e for e in found)
 
 
-def test_generic_prefixes_filtered():
-    assert "noreply" in _GENERIC_PREFIXES
-    assert "contact" in _GENERIC_PREFIXES
-    assert "support" in _GENERIC_PREFIXES
+def test_nonfunctional_prefixes_filtered():
+    assert "noreply" in _NONFUNCTIONAL_PREFIXES
+    assert "postmaster" in _NONFUNCTIONAL_PREFIXES
+
+
+def test_generic_but_functional_prefixes_not_filtered():
+    # contact@, info@, hello@... restent des boîtes surveillées par une équipe :
+    # exploitables en prospection B2B, contrairement aux alias noreply/postmaster.
+    assert "contact" not in _NONFUNCTIONAL_PREFIXES
+    assert "support" not in _NONFUNCTIONAL_PREFIXES
+    assert "info" not in _NONFUNCTIONAL_PREFIXES
 
 
 def test_jean_dupont_not_generic():
-    assert "jean.dupont" not in _GENERIC_PREFIXES
+    assert "jean.dupont" not in _NONFUNCTIONAL_PREFIXES
 
 
 # ── scrape_email_from_homepage — tests avec mock HTTP ────────────────────────
@@ -55,13 +62,24 @@ async def test_scrape_email_finds_professional_email():
 
 
 @pytest.mark.anyio
-async def test_scrape_email_rejects_generic_prefix():
-    # "noreply" est dans _GENERIC_PREFIXES → ignoré
+async def test_scrape_email_rejects_nonfunctional_prefix():
+    # "noreply" est dans _NONFUNCTIONAL_PREFIXES (adresse automatisée) → ignoré
     html = "<p>noreply@acme.fr</p><p>marie.martin@acme.fr</p>"
     mock_client = _make_http_mock(200, html)
     with patch("httpx.AsyncClient", return_value=mock_client):
         result = await scrape_email_from_homepage("https://acme.fr")
     assert result == "marie.martin@acme.fr"
+
+
+@pytest.mark.anyio
+async def test_scrape_email_accepts_generic_functional_prefix():
+    # "contact@" n'est plus rejeté : boîte générique mais surveillée par une équipe,
+    # exploitable en prospection B2B (contrairement à noreply@/postmaster@).
+    html = "<p>contact@acme.fr</p>"
+    mock_client = _make_http_mock(200, html)
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await scrape_email_from_homepage("https://acme.fr")
+    assert result == "contact@acme.fr"
 
 
 @pytest.mark.anyio

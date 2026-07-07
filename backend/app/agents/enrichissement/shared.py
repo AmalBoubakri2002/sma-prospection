@@ -2,14 +2,18 @@
 pour que les deux ne divergent pas silencieusement sur les poids/règles de fallback."""
 
 
-def compute_score_intent(fields: dict) -> float:
-    """Score d'intention (0-100) basé sur la complétude du profil enrichi."""
+def compute_score_exploitabilite(fields: dict) -> float:
+    """Score de contactabilité (0-100) — indique si un lead est exploitable
+    MAINTENANT par l'Agent CRM / la génération d'email (a-t-on un moyen de le
+    contacter ?), pas sa qualité commerciale. N'entre PAS dans l'entraînement
+    du modèle de scoring (voir ml/dataset_pipeline.py::_compute_raw_score) :
+    contrairement au score de qualité, ces signaux mesurent le succès de
+    l'enrichissement, pas la valeur du lead."""
     return float(
-        25 * int(bool(fields.get("email"))) +
+        40 * int(bool(fields.get("email"))) +
         25 * int(bool(fields.get("telephone"))) +
         20 * int(bool(fields.get("site_web"))) +
-        15 * int(bool(fields.get("prenom_dirigeant"))) +
-        15 * int(bool(fields.get("ca")))
+        15 * int(bool(fields.get("prenom_dirigeant")))
     )
 
 

@@ -37,10 +37,10 @@ FEATURE_NAMES = [
     "marge_nette",     # marge nette winsorisée [-1.5, 1.5], imputée médiane
     "croissance_ca",   # taux de croissance, imputé 0 (absence = inconnu)
     "age_entreprise",  # âge en années, imputé médiane
-    "has_email",
-    "has_phone",
-    "has_website",
-    "has_dirigeant",
+    # has_email/has_phone/has_website/has_dirigeant retirés le 2026-07-07 : ce
+    # sont des signaux de contactabilité (voir score_exploitabilite dans
+    # app/agents/enrichissement/shared.py), pas de qualité commerciale — ils
+    # ne doivent plus entraîner le modèle de scoring des leads.
     "taille_code",     # ordinal 0 (TPE) → 4 (GE)
     "secteur_code",    # division NAF (2 chiffres) — évite la sparsité du code sous-classe complet
     "ca_par_salarie_log1p",  # CA / effectif représentatif — ratio explicite plutôt

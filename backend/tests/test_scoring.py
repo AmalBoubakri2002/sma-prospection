@@ -101,10 +101,6 @@ def test_build_feature_vector_missing_financials_use_medians():
     assert vec[0, FEATURE_INDEX["marge_nette"]] == pytest.approx(medians["marge_nette"], rel=1e-5)
     assert vec[0, FEATURE_INDEX["age_entreprise"]] == pytest.approx(medians["age_entreprise"], rel=1e-5)
     assert vec[0, FEATURE_INDEX["croissance_ca"]] == 0.0
-    assert vec[0, FEATURE_INDEX["has_email"]] == 0.0
-    assert vec[0, FEATURE_INDEX["has_phone"]] == 0.0
-    assert vec[0, FEATURE_INDEX["has_website"]] == 0.0
-    assert vec[0, FEATURE_INDEX["has_dirigeant"]] == 0.0
     assert vec[0, FEATURE_INDEX["taille_code"]] == 0.0  # "NN" (défaut) → TPE
     assert vec[0, FEATURE_INDEX["secteur_code"]] == -1.0  # secteur inconnu, hors catégories
 
@@ -162,10 +158,6 @@ def test_build_feature_vector_known_financials():
     assert vec[0, FEATURE_INDEX["croissance_ca"]] == pytest.approx((5_000_000 - 4_000_000) / 4_000_000, rel=1e-5)
     assert vec[0, FEATURE_INDEX["taille_code"]] == TAILLE_TO_CODE["31"]
     assert vec[0, FEATURE_INDEX["secteur_code"]] == 0.0  # "62" est à l'index 0
-    assert vec[0, FEATURE_INDEX["has_email"]] == 1.0
-    assert vec[0, FEATURE_INDEX["has_phone"]] == 1.0
-    assert vec[0, FEATURE_INDEX["has_website"]] == 1.0
-    assert vec[0, FEATURE_INDEX["has_dirigeant"]] == 1.0
 
 
 # ── Non-régression train/inférence ──────────────────────────────────────────────
@@ -204,10 +196,6 @@ def test_feature_vector_matches_training_build_features():
         "age_entreprise": age_years,
         "taille_entreprise": "31",
         "secteur": "6201Z",
-        "has_email": 1,
-        "has_phone": 1,
-        "has_website": 1,
-        "has_dirigeant": 1,
     }])
     vec_train, _ = build_features(df, medians=dict(medians))
 
@@ -232,10 +220,6 @@ def test_feature_vector_matches_training_build_features_missing_data():
         "age_entreprise": np.nan,
         "taille_entreprise": "NN",
         "secteur": None,
-        "has_email": 0,
-        "has_phone": 0,
-        "has_website": 0,
-        "has_dirigeant": 0,
     }])
     vec_train, _ = build_features(df, medians=dict(medians))
 
@@ -268,10 +252,6 @@ def test_compute_shap_dedupes_correlated_financial_features():
         "marge_nette": 0.10,
         "croissance_ca": 0.0,
         "age_entreprise": 0.08,
-        "has_email": 0.02,
-        "has_phone": 0.01,
-        "has_website": 0.01,
-        "has_dirigeant": 0.01,
         "taille_code": 0.07,
         "secteur_code": 0.06,
         "ca_par_salarie_log1p": 0.04,

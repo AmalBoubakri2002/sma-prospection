@@ -21,7 +21,7 @@ from app.agents.enrichissement.recherche_entreprises import (
     RechercheEntreprisesError,
     enrich_from_siret,
 )
-from app.agents.enrichissement.shared import apply_inpi_fallback, compute_score_intent
+from app.agents.enrichissement.shared import apply_inpi_fallback, compute_score_exploitabilite
 from app.agents.enrichissement.web_search import find_company_website
 from app.models.campaign import Campaign
 from app.models.lead import LeadStatus
@@ -56,17 +56,16 @@ def _has_sufficient_financials(fields: dict, lead) -> bool:
     return bool(ca) and resultat_net is not None
 
 
-def _compute_score_intent(fields: dict, lead) -> float:
-    """Comme shared.compute_score_intent, avec repli sur les champs déjà en base
-    (lead réutilisé depuis un SIRET déjà enrichi)."""
+def _compute_score_exploitabilite(fields: dict, lead) -> float:
+    """Comme shared.compute_score_exploitabilite, avec repli sur les champs déjà en
+    base (lead réutilisé depuis un SIRET déjà enrichi)."""
     merged = {
         "email": fields.get("email") or lead.email,
         "telephone": fields.get("telephone") or lead.telephone,
         "site_web": fields.get("site_web") or lead.site_web,
         "prenom_dirigeant": fields.get("prenom_dirigeant") or lead.prenom_dirigeant,
-        "ca": fields.get("ca") or lead.ca,
     }
-    return compute_score_intent(merged)
+    return compute_score_exploitabilite(merged)
 
 
 # TC = champs_renseignés / champs_totaux × 100
@@ -101,7 +100,7 @@ async def _enrich_one(db: AsyncSession, lead, db_lock: asyncio.Lock) -> tuple[di
         cached = await get_enriched_fields_by_siret(db, lead.siret)
     if cached:
         fields.update(cached)
-        fields["score_intent"] = _compute_score_intent(fields, lead)
+        fields["score_exploitabilite"] = _compute_score_exploitabilite(fields, lead)
         return fields, True
 
     # Sources 1-3 : indépendantes entre elles (aucune ne dépend du résultat
@@ -179,8 +178,8 @@ async def _enrich_one(db: AsyncSession, lead, db_lock: asyncio.Lock) -> tuple[di
             fields["latitude"], fields["longitude"] = coords
 
     has_data = any(fields.get(f) is not None for f in _ENRICHMENT_FIELDS)
-    score_intent = 0.0 if en_procedure else _compute_score_intent(fields, lead)
-    fields["score_intent"] = score_intent
+    score_exploitabilite = 0.0 if en_procedure else _compute_score_exploitabilite(fields, lead)
+    fields["score_exploitabilite"] = score_exploitabilite
 
     taux = _compute_completude(fields, lead)
     fields["taux_completude"] = taux
@@ -214,12 +213,12 @@ async def _enrich_and_save_one(
                 "Lead %s (%s) — timeout %gs, marqué ENRICHI sans données",
                 lead.siret, lead.company_name, _LEAD_TIMEOUT,
             )
-            fields = {"score_intent": 0.0}
+            fields = {"score_exploitabilite": 0.0}
             has_data = False
             errored = True
         except Exception as exc:
             logger.warning("Lead %s — erreur inattendue : %s", lead.siret, exc)
-            fields = {"score_intent": 0.0}
+            fields = {"score_exploitabilite": 0.0}
             has_data = False
             errored = True
 

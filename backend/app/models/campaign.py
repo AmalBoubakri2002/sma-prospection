@@ -24,8 +24,11 @@ class Campaign(Base):
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Seuil de qualification — leads avec score >= score_minimum passent en QUALIFIE
-    # 0.7 = seuil 70/100 du dossier de conception (score XGBoost ∈ [0, 1])
-    score_minimum: Mapped[float] = mapped_column(default=0.5)
+    # 0.65 (2026-07-07) : reproduit la sélectivité empirique de l'ancien seuil 0.50
+    # sur l'échelle corrigée du modèle (barème /7 + calibration isotonique, voir
+    # ml/train_scoring_model.py) — l'ancien 0.50 datait du modèle bugué qui
+    # plafonnait à ~0.79 et laissait passer des leads déficitaires.
+    score_minimum: Mapped[float] = mapped_column(default=0.65)
 
     # Résultats
     estimated_prospects: Mapped[int] = mapped_column(Integer, default=0)

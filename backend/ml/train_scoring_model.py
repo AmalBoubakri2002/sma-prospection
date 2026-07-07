@@ -10,8 +10,16 @@ un pouvoir prédictif réel — à ne jamais citer comme preuve de "qualité pr�
 Régression sur score_continu, pas classification + calibration Platt : évite les scores
 qui se figent en blocs quasi identiques quand les classes sont presque séparables.
 
+Calibration isotonique post-hoc (2026-07-07) : la régularisation XGBoost (reg_alpha,
+reg_lambda, max_depth=4) compresse systématiquement les deux queues de la distribution
+vers le centre (constaté : le modèle ne prédit jamais au-delà de ~0.79 même quand
+score_continu atteint 1.0 sur 7.8% des leads). Fittée sur des prédictions OUT-OF-FOLD
+(CV 5-fold ci-dessous), jamais sur les prédictions du modèle final sur ses propres
+données de train — sinon la calibration apprendrait aussi le bruit du train et perdrait
+sa garantie de monotonie utile sur données neuves.
+
 Usage: python train_scoring_model.py [--data dataset_scoring_real.csv] [--out-dir models/]
-Outputs: models/xgboost_scoring.joblib, models/feature_config.json
+Outputs: models/xgboost_scoring.joblib, models/score_calibrator.joblib, models/feature_config.json
 """
 
 import argparse
@@ -23,6 +31,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import xgboost as xgb
+from sklearn.isotonic import IsotonicRegression
 from sklearn.metrics import (
     average_precision_score,
     mean_squared_error,
@@ -125,10 +134,6 @@ def build_features(df: pd.DataFrame, medians: dict | None = None) -> tuple[np.nd
         marge,
         croissance,
         age,
-        df["has_email"].astype(np.float32),
-        df["has_phone"].astype(np.float32),
-        df["has_website"].astype(np.float32),
-        df["has_dirigeant"].astype(np.float32),
         taille_code,
         secteur_code,
         np.log1p(ca_par_salarie),
@@ -331,15 +336,27 @@ def main(data_path: str | None = None, out_dir: str | None = None) -> None:
     )
     kf = KFold(n_splits=5, shuffle=True, random_state=42)
     cv_rmses = []
+    oof_pred = np.zeros_like(y_train)
     for fold, (tr_idx, val_idx) in enumerate(kf.split(X_train), 1):
         cv_model.fit(X_train[tr_idx], y_train[tr_idx], verbose=False)
         fold_pred = cv_model.predict(X_train[val_idx])
+        oof_pred[val_idx] = fold_pred
         rmse = float(np.sqrt(mean_squared_error(y_train[val_idx], fold_pred)))
         cv_rmses.append(rmse)
         print(f"  Fold {fold} : RMSE = {rmse:.4f}")
 
+    # ── Calibration isotonique ────────────────────────────────────────────────
+    # oof_pred couvre tout X_train avec des prédictions jamais vues par le modèle
+    # qui les a produites (chaque fold prédit sur les données exclues de son propre
+    # entraînement) — condition nécessaire pour que la calibration corrige le vrai
+    # biais de généralisation du modèle plutôt que du simple bruit mémorisé.
+    calibrator = IsotonicRegression(out_of_bounds="clip")
+    calibrator.fit(oof_pred, y_train)
+
     # ── Évaluation finale sur test ────────────────────────────────────────────
-    y_pred = np.clip(model.predict(X_test), 0.0, 1.0)
+    y_pred_raw = np.clip(model.predict(X_test), 0.0, 1.0)
+    y_pred = np.clip(calibrator.predict(y_pred_raw), 0.0, 1.0)
+    rmse_test_raw = float(np.sqrt(mean_squared_error(y_test, y_pred_raw)))
     rmse_test = float(np.sqrt(mean_squared_error(y_test, y_pred)))
     r2_test = float(r2_score(y_test, y_pred))
     # AUC/AP indicatifs : reprennent label_scoring (seuil binaire) juste pour
@@ -355,13 +372,15 @@ def main(data_path: str | None = None, out_dir: str | None = None) -> None:
     print("    vraie conversion (label et features partagent les mêmes")
     print("    ingrédients — voir limite documentée en tête de ce fichier).")
     print(f"{'═'*60}")
-    print(f"  RMSE (fidélité)      : {rmse_test:.4f}")
-    print(f"  R²                   : {r2_test:.4f}")
+    print(f"  RMSE (fidélité, brut)      : {rmse_test_raw:.4f}")
+    print(f"  RMSE (fidélité, calibré)   : {rmse_test:.4f}")
+    print(f"  R² (calibré)               : {r2_test:.4f}")
     print(f"  CV-5 RMSE (fidélité) : {np.mean(cv_rmses):.4f} ± {np.std(cv_rmses):.4f}  {'✓ stable' if np.std(cv_rmses) < 0.01 else '⚠ instable'}")
     print(f"  AUC-ROC (indicatif, vs label_scoring seuillé) : {auc_test:.4f}")
     print(f"  Average Precision (indicatif)                 : {ap_test:.4f}")
     print(f"  Arbres utilisés      : {best_n}")
-    print(f"  Score prédit — min/max (test) : {y_pred.min():.3f} / {y_pred.max():.3f}")
+    print(f"  Score prédit — min/max (brut)    : {y_pred_raw.min():.3f} / {y_pred_raw.max():.3f}")
+    print(f"  Score prédit — min/max (calibré) : {y_pred.min():.3f} / {y_pred.max():.3f}")
     print(f"{'═'*60}")
 
     print_calibration_table(y_test, y_pred)
@@ -372,6 +391,9 @@ def main(data_path: str | None = None, out_dir: str | None = None) -> None:
     # ── Sauvegarde ────────────────────────────────────────────────────────────
     model_path = out / "xgboost_scoring.joblib"
     joblib.dump(model, model_path)
+
+    calibrator_path = out / "score_calibrator.joblib"
+    joblib.dump(calibrator, calibrator_path)
 
     config = {
         "feature_names": FEATURE_NAMES,
@@ -386,19 +408,23 @@ def main(data_path: str | None = None, out_dir: str | None = None) -> None:
                 "vraie conversion commerciale. Voir limite méthodologique "
                 "documentée en tête de ml/train_scoring_model.py."
             ),
+            "rmse_test_raw": round(rmse_test_raw, 4),
             "rmse_test": round(rmse_test, 4),
             "r2_test": round(r2_test, 4),
             "cv5_rmse_mean": round(float(np.mean(cv_rmses)), 4),
             "cv5_rmse_std": round(float(np.std(cv_rmses)), 4),
             "auc_test_vs_label_scoring": round(float(auc_test), 4),
             "average_precision_test_vs_label_scoring": round(float(ap_test), 4),
+            "score_pred_range_raw": [round(float(y_pred_raw.min()), 3), round(float(y_pred_raw.max()), 3)],
+            "score_pred_range_calibrated": [round(float(y_pred.min()), 3), round(float(y_pred.max()), 3)],
         },
     }
     config_path = out / "feature_config.json"
     config_path.write_text(json.dumps(config, indent=2, ensure_ascii=False))
 
-    print(f"Modèle sauvegardé  : {model_path.resolve()}")
-    print(f"Config sauvegardée : {config_path.resolve()}\n")
+    print(f"Modèle sauvegardé      : {model_path.resolve()}")
+    print(f"Calibrateur sauvegardé : {calibrator_path.resolve()}")
+    print(f"Config sauvegardée     : {config_path.resolve()}\n")
 
 
 if __name__ == "__main__":

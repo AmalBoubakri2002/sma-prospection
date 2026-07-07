@@ -218,10 +218,10 @@ function LeadDetailDrawer({
             </div>
           </div>
 
-          {/* SHAP top 5 */}
+          {/* SHAP */}
           <div>
             <Text style={{ fontSize: 11.5, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.4, display: "block", marginBottom: 10 }}>
-              Top 5 facteurs explicatifs
+              Facteurs explicatifs
             </Text>
             <ShapBars shapJson={lead.shap_explication} />
           </div>

@@ -41,7 +41,7 @@ def _make_lead_reel() -> Lead:
     lead.date_creation = date(2012, 6, 15)
     lead.score = 0.87
     lead.label_scoring = "CHAUD"
-    lead.score_intent = 72.0
+    lead.score_exploitabilite = 72.0
     return lead
 
 

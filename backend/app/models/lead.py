@@ -54,7 +54,7 @@ class Lead(Base):
     ca_n1: Mapped[int | None] = mapped_column(BigInteger())
     resultat_net: Mapped[int | None] = mapped_column(BigInteger())
     date_creation: Mapped[date | None] = mapped_column(Date())
-    score_intent: Mapped[float | None] = mapped_column(Double())
+    score_exploitabilite: Mapped[float | None] = mapped_column(Double())
     taux_completude: Mapped[float | None] = mapped_column(Double())
     latitude: Mapped[float | None] = mapped_column(Double())
     longitude: Mapped[float | None] = mapped_column(Double())

@@ -11,6 +11,16 @@ def test_single_criteria_per_field():
     )
 
 
+def test_naf_requires_periode_wrapper():
+    """activitePrincipaleEtablissement n'est exposé par l'API Sirene qu'à
+    l'intérieur de periodesEtablissement — une requête sans periode(...) est
+    rejetée en 400 par l'API (testé en prod le 2026-07-07). Le filtrage sur le
+    NAF ACTUEL (vs historique) se fait en aval sur le résultat, pas ici — voir
+    veille/agent.py::run_veille."""
+    query = build_query(["62.01Z"], ["75008"], ["12"])
+    assert "periode(activitePrincipaleEtablissement:62.01Z)" in query
+
+
 def test_multiple_values_combined_with_or():
     query = build_query(["62.01Z", "62.02A"], ["75008", "75009"], ["12"])
     assert (

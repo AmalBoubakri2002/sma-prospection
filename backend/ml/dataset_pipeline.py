@@ -51,7 +51,7 @@ from app.agents.enrichissement.recherche_entreprises import (  # noqa: E402
     extract_contact_info,
     extract_dirigeant_principal,
 )
-from app.agents.enrichissement.shared import apply_inpi_fallback, compute_score_intent  # noqa: E402
+from app.agents.enrichissement.shared import apply_inpi_fallback, compute_score_exploitabilite  # noqa: E402
 from app.agents.enrichissement.web_search import find_company_website  # noqa: E402
 
 logging.basicConfig(
@@ -67,35 +67,66 @@ log = logging.getLogger("dataset-pipeline")
 # ═══════════════════════════════════════════════════════════════════════════
 
 TODAY = date(2026, 6, 21)
-TAILLE_POINTS: dict[str, float] = {
-    "NN": 0.0, "00": 0.0, "01": 0.0, "02": 0.0, "03": 0.0,   # TPE/micro
-    "11": 1.0, "12": 1.0,                                     # PE
-    "21": 2.0, "22": 2.0, "31": 2.0,                          # ME (cœur de cible)
-    "32": 2.0, "41": 2.0, "42": 2.0,                          # ETI (cœur de cible)
-    "51": 1.0, "52": 1.0, "53": 1.0,                          # GE (bonus réduit)
-}
 
-# Le bonus marge montait auparavant d'un coup de 0 à +1 exactement à 5% de
-# marge nette (une entreprise à 4.9% de marge obtenait 0, une à 5.0%
-# obtenait +1 plein) — un mur arbitraire qui ignore l'échelle du profit
-# (ex: 2.3% de marge sur 17.8M€ de CA, soit ~410k€ de profit annuel réel,
-# ne rapportait rien). Le bonus monte maintenant linéairement de 0 à +1
-# entre 0% et ce plafond.
-MARGE_BONUS_CEILING = 0.05
+# ── Barème de score_continu (règle métier, 2026-07-07) ──────────────────────
+# Remplace l'ancien barème /7 (rentabilité + marge + taille + âge + CA, avec
+# rampes continues) par un barème /100 en 3 blocs fournis par l'équipe métier :
+# santé financière (50) + maturité (30) + capacité économique (20).
+# taille_entreprise ne fait plus partie du barème (contrairement à avant) —
+# elle reste en revanche une feature du modèle XGBoost (feature_spec.py),
+# donc le recouvrement label/features est réduit par rapport à l'ancien barème,
+# pas aggravé.
 
-# Les trois bonus ci-dessous (croissance, ancienneté, CA) étaient encore des
-# paliers durs (ex: croissance >10% → +2, sinon >0% → +1, sinon 0 ; CA
-# >500k€ → +1, sinon 0). Combinés aux paliers déjà discrets de taille, le
-# score brut ne prenait qu'une quinzaine de valeurs distinctes sur toute la
-# base — d'où des scores calibrés qui se figent en 2-3 blocs identiques
-# (ex: plusieurs leads à 87% pile) plutôt qu'un continuum lisible. Remplacés
-# le 2026-07-03 par des rampes continues qui saturent au même plafond de
-# points qu'avant (le barème /9 reste inchangé), pour que le score reflète
-# une gradation réelle plutôt qu'un seuil couperet.
-CROISSANCE_RAMP_CEILING = 0.20   # +2 pts atteints à partir de +20% de croissance CA
-AGE_RAMP_CEILING = 5.0           # +1 pt atteint à partir de 5 ans d'ancienneté
-CA_RAMP_LOG_LOW = 100_000.0      # en dessous : 0 pt
-CA_RAMP_LOG_HIGH = 1_000_000.0   # à partir de : +1 pt plein (rampe log-linéaire entre les deux)
+# Résultat net — 30 pts. Corrigé le 2026-07-07 (suite) : la version précédente
+# (rentable=30 / équilibre=15 / inconnu=15 / déficit=0, palier dur) traitait un
+# déficit de -10k€ EXACTEMENT comme un déficit de -10M€ — perte d'information
+# jugée trop brutale pour un modèle ML. Remplacé par un barème sur le ratio
+# resultat_net/ca (ampleur du déficit relative à la taille de l'entreprise,
+# pas la valeur absolue) : ratio>0→30, [-2%,0%]→15, [-5%,-2%[→10,
+# [-10%,-5%[→5, <-10%→0.
+RN_RATIO_POINTS_POSITIVE = 30.0
+RN_RATIO_POINTS_FLOOR = 0.0     # ratio < -10%
+RN_POINTS_UNKNOWN = 15.0        # ni ratio ni resultat_net disponibles (crédit neutre)
+
+# Repéré le 2026-07-07 (suite) sur données réelles (Neo9/Reeliant/Expertease
+# Partners, RN respectivement +550k€/+624k€/0€, tous scorés identiquement à
+# 15 pts) : quand `ca` manque (17.2% des leads du dataset ont ce profil), le
+# ratio RN/CA est incalculable et le RN connu était totalement ignoré — un
+# lead confirmé à +624k€ de résultat net traité EXACTEMENT comme un lead dont
+# on ne sait rien. Fallback : si le ratio est incalculable mais resultat_net
+# est connu, petit ajustement autour du crédit neutre basé sur le seul signe
+# (pas l'ampleur, non observable sans CA) — pour ne pas perdre un signal
+# disponible sans sur-interpréter une magnitude qu'on ne peut pas mesurer.
+RN_SIGN_FALLBACK_BONUS = 5.0
+
+# Marge nette — 20 pts. Corrigé le 2026-07-07 (suite) : remplace les paliers
+# durs par une rampe linéaire continue (barème fourni) — score_marge =
+# clamp((marge_nette / MARGE_RAMP_CEILING) * 20, 0, 20). Marge inconnue :
+# crédit neutre (non spécifié par le barème fourni, choix cohérent avec le
+# traitement du résultat net ci-dessus).
+MARGE_RAMP_CEILING = 0.20
+MARGE_POINTS_MAX = 20.0
+MARGE_POINTS_UNKNOWN = 10.0
+
+# Maturité — 30 pts, basé uniquement sur age_entreprise (paliers durs fournis
+# tels quels). Le barème fourni ne distingue pas "jeune (<2 ans)" de "âge
+# inconnu" — les deux tombent dans le même palier bas (5 pts), à la différence
+# du traitement RN/CA ci-dessus/dessous. Choix délibéré de suivre le barème
+# littéralement plutôt que d'improviser un crédit neutre non spécifié : l'âge
+# vient de la date de création SIRENE, quasi toujours disponible en pratique.
+AGE_POINTS_CORE = 30.0        # 5 ≤ âge ≤ 20 ans
+AGE_POINTS_YOUNG = 20.0       # 2 ≤ âge < 5 ans
+AGE_POINTS_OLD = 15.0         # âge > 20 ans
+AGE_POINTS_LOW = 5.0          # âge < 2 ans, OU âge inconnu (voir note ci-dessus)
+
+# Capacité économique — 20 pts, échelle log entre ces deux bornes (barème
+# fourni). CA inconnu : crédit neutre (milieu de barème), même logique que
+# RN inconnu — absence de donnée ≠ mauvaise capacité (non spécifié par le
+# barème fourni, choix cohérent avec le reste du fichier).
+CA_LOG_LOW = 100_000.0        # en dessous : 0 pt
+CA_LOG_HIGH = 10_000_000.0    # à partir de : 20 pts pleins
+CA_POINTS_MAX = 20.0
+CA_POINTS_UNKNOWN = 10.0
 
 TAILLE_SAMPLE_WEIGHTS: dict[str, float] = {
     "NN": 0.04, "00": 0.02, "01": 0.08, "02": 0.08, "03": 0.08,
@@ -361,7 +392,7 @@ async def _enrich_one_siret(
         except (InpiError, httpx.HTTPError) as exc:
             log.debug("INPI %s : %s", siren, exc)
 
-    fields["score_intent"] = compute_score_intent(fields)
+    fields["score_exploitabilite"] = compute_score_exploitabilite(fields)
     cache.set(siret, fields)
     return fields
 
@@ -414,94 +445,80 @@ def _add_derived_features(df: pd.DataFrame) -> pd.DataFrame:
 # ── Label (documented heuristic, see module docstring) ────────────────────────
 
 def _compute_raw_score(df: pd.DataFrame) -> np.ndarray:
-    """Score firmo/financier 0-9 normalisé en [0, 1] — voir limite de fuite
-    de label en tête de fichier : ces mêmes champs redeviennent des features
-    d'entraînement.
+    """Score /100 normalisé en [0, 1] — voir limite de fuite de label en tête
+    de fichier : ces mêmes champs redeviennent des features d'entraînement.
+
+    Remplace le 2026-07-07 l'ancien barème /7 (rampes continues, taille
+    incluse) par un barème /100 fourni par l'équipe métier, en 3 blocs
+    indépendants :
+      1. Santé financière (50 pts) = résultat net (30) + marge nette (20)
+      2. Maturité (30 pts)         = âge de l'entreprise seul
+      3. Capacité économique (20 pts) = CA, échelle logarithmique
 
     N'inclut volontairement PAS has_email/has_phone/has_website/has_dirigeant
-    ni score_intent : ce sont des signaux de "avons-nous réussi à enrichir ce
-    lead", pas de "ce lead est-il une bonne cible commerciale". Mais même cette
-    exclusion ne suffit pas à les rendre indépendants du label en pratique :
-    voir impute_has_features() plus bas, qui les tire par Bernoulli conditionné
-    sur taille_entreprise — un ingrédient direct de ce score.
+    ni score_exploitabilite (voir shared.compute_score_exploitabilite) : ce
+    sont des signaux de "avons-nous réussi à enrichir/contacter ce lead", pas
+    de "ce lead est-il une bonne cible commerciale". Ni taille_entreprise,
+    contrairement à l'ancien barème — elle reste une feature du modèle
+    XGBoost (feature_spec.py) sans plus faire partie du label, ce qui réduit
+    le recouvrement label/features par rapport à l'ancien barème.
 
-    Révisé le 2026-07-03 suite à des cas réels en production où des
-    entreprises manifestement solides plafonnaient à 4/9 (ex: Capital
-    Banking Solutions — CA 17.8M€, RN +401k€, mais taille PE et marge 2.3%) :
-    taille_entreprise et marge_nette étaient chacune évaluées par un seuil
-    binaire dur (ME/ETI ou rien ; >5% de marge ou rien), qui traite un
-    lead juste sous la barre exactement comme un lead très éloigné du
-    critère. Les deux sont désormais des dégradés (TAILLE_POINTS,
-    MARGE_BONUS_CEILING) — même poids maximal (2 pts / 1 pt), donc le
-    barème /9 et LABEL_THRESHOLD restent valides tels quels.
+    Résultat net et marge nette (2026-07-07, suite) : notées sur des fonctions
+    graduées de l'ampleur relative (ratio resultat_net/ca), pas des paliers
+    durs sur le signe brut — un déficit de -10k€ et un déficit de -10M€
+    n'obtiennent plus le même score, seule leur ampleur relative au CA compte.
+    Maturité/capacité restent en paliers durs (barème fourni tel quel).
 
-    Complété le 2026-07-03 (suite) : croissance_ca, age_entreprise et ca
-    étaient encore des seuils durs — remplacés par des rampes continues
-    (CROISSANCE_RAMP_CEILING, AGE_RAMP_CEILING, CA_RAMP_LOG_*) qui saturent
-    au même plafond de points, pour éliminer les "murs" restants qui
-    faisaient converger de nombreux leads vers un petit nombre de scores
-    bruts identiques (voir constantes en tête de fichier).
-
-    Corrigé le 2026-07-04 : `resultat_net` manquant (non récupéré par
-    l'enrichissement) était traité exactement comme `resultat_net <= 0`
-    (rentable=False → 0 pt sur 2, et marge bonus forcé à 0) — confondant
-    "on ne sait pas" avec "on sait que c'est mauvais". Sur ~9.5k lignes,
-    ça faisait du simple flag "résultat net disponible" le facteur qui,
-    à lui seul, décidait de 3 des 9 points du score pour toute donnée
-    manquante — d'où une importance de feature écrasante sur a_resultat_net
-    (59%) et rn_signed_log1p (25%) dans le modèle entraîné dessus, au
-    détriment de tout autre signal (taille, marge, CA, âge combinés :
-    <15%). Un résultat net inconnu reçoit désormais un crédit neutre
-    (1.0/2.0, soit la moyenne des deux issues possibles) au lieu de 0.0 —
-    le barème /9 reste inchangé, seule la valeur assignée au cas "inconnu"
-    change.
+    Fallback signe seul (2026-07-07, suite) : quand `ca` manque, le ratio est
+    incalculable et resultat_net connu était ignoré (crédit neutre, comme
+    "totalement inconnu") — voir RN_SIGN_FALLBACK_BONUS en tête de fichier.
+    Ne s'applique qu'à resultat_net : marge_nette est par définition
+    resultat_net/ca, sans CA il n'y a rien à dégrader même par le signe.
     """
-    pts = np.zeros(len(df))
+    # ratio = resultat_net / ca (= marge_nette, déjà calculé par
+    # _add_derived_features — NaN si ca ou resultat_net manquant).
+    ratio = df["marge_nette"]
+    ratio_known = ratio.notna()
+    # >0%->30, [-2%,0%]->15, [-5%,-2%[->10, [-10%,-5%[->5, <-10%->0.
+    score_rn_ratio = np.select(
+        [ratio > 0, ratio >= -0.02, ratio >= -0.05, ratio >= -0.10],
+        [RN_RATIO_POINTS_POSITIVE, 15.0, 10.0, 5.0],
+        default=RN_RATIO_POINTS_FLOOR,
+    )
+    # Ratio incalculable (ca manquant) : replie sur le signe de resultat_net
+    # seul quand il est connu (+/-5 pts autour du neutre), sinon neutre pur.
+    rn = df["resultat_net"]
+    score_rn_sign_fallback = np.select(
+        [rn > 0, rn < 0],
+        [RN_POINTS_UNKNOWN + RN_SIGN_FALLBACK_BONUS, RN_POINTS_UNKNOWN - RN_SIGN_FALLBACK_BONUS],
+        default=RN_POINTS_UNKNOWN,
+    )
+    score_rn = np.where(ratio_known, score_rn_ratio, score_rn_sign_fallback)
 
-    rn_known = df["resultat_net"].notna()
-    rentable = df["resultat_net"] > 0
-    # 2.0 si rentabilité confirmée, 0.0 si déficit confirmé, 1.0 (neutre) si
-    # resultat_net n'a simplement pas pu être récupéré — voir note ci-dessus.
-    profit_pts = np.where(rn_known, np.where(rentable, 2.0, 0.0), 1.0)
-    pts += profit_pts
-    # Dégradé linéaire 0→1 entre 0% et MARGE_BONUS_CEILING de marge nette
-    # (au lieu d'un seuil dur à 5%) — seulement si l'entreprise est déjà
-    # confirmée rentable (une marge positive sans résultat net positif n'a
-    # pas de sens avec la définition marge = resultat_net/ca ; et un
-    # résultat net inconnu n'a pas de marge calculable non plus).
-    marge_ratio = (df["marge_nette"].clip(lower=0) / MARGE_BONUS_CEILING).clip(upper=1.0)
-    pts += np.where(rentable, marge_ratio.fillna(0.0), 0.0)
+    # Rampe linéaire continue : clamp((marge/MARGE_RAMP_CEILING)*20, 0, 20).
+    # Marge inconnue -> crédit neutre (pas de fallback signe, voir docstring).
+    marge_scaled = (ratio / MARGE_RAMP_CEILING * MARGE_POINTS_MAX).clip(lower=0.0, upper=MARGE_POINTS_MAX)
+    score_marge = np.where(ratio_known, marge_scaled.fillna(0.0), MARGE_POINTS_UNKNOWN)
 
-    # Rampe continue 0→2 entre 0% et CROISSANCE_RAMP_CEILING de croissance CA
-    # (au lieu des paliers >10%→+2, >0%→+1). Une croissance négative ou
-    # inconnue (ca_n1 indisponible) contribue 0, comme avant.
-    croissance = df["croissance_ca"].fillna(0.0).clip(lower=0)
-    pts += (croissance / CROISSANCE_RAMP_CEILING).clip(upper=1.0) * 2.0
+    age = df["age_entreprise"]
+    # 5-20 ans->30 (coeur de cible), 2-5 ans->20, >20 ans->15, <2 ans OU âge
+    # inconnu->5 (voir note sur ce dernier point en tête de fichier).
+    score_age = np.select(
+        [(age >= 5) & (age <= 20), (age >= 2) & (age < 5), age > 20],
+        [AGE_POINTS_CORE, AGE_POINTS_YOUNG, AGE_POINTS_OLD],
+        default=AGE_POINTS_LOW,
+    )
 
-    # Dégradé par taille (TAILLE_POINTS) au lieu du bonus binaire "ME/ETI (+2)
-    # ou rien" — voir constante en tête de fichier pour la justification.
-    pts += df["taille_entreprise"].astype(str).map(TAILLE_POINTS).fillna(0.0).to_numpy()
+    ca = df["ca"]
+    ca_valid = ca.notna() & (ca > 0)
+    log_lo, log_hi = math.log(CA_LOG_LOW), math.log(CA_LOG_HIGH)
+    ca_ratio = ((np.log(ca.clip(lower=1.0)) - log_lo) / (log_hi - log_lo)).clip(lower=0.0, upper=1.0)
+    # Échelle log entre CA_LOG_LOW (0 pt) et CA_LOG_HIGH (20 pts pleins) —
+    # barème fourni. CA inconnu -> crédit neutre (10 pts, non spécifié par le
+    # barème fourni, choisi par cohérence avec le traitement RN/marge ci-dessus).
+    score_ca = np.where(ca_valid, ca_ratio.fillna(0.0) * CA_POINTS_MAX, CA_POINTS_UNKNOWN)
 
-    # Rampe continue 0→1 entre 0 et AGE_RAMP_CEILING années (au lieu du seuil
-    # dur >3 ans).
-    age_ratio = (df["age_entreprise"].fillna(0.0) / AGE_RAMP_CEILING).clip(lower=0.0, upper=1.0)
-    pts += age_ratio
-
-    # Rampe log-linéaire 0→1 entre CA_RAMP_LOG_LOW et CA_RAMP_LOG_HIGH (au
-    # lieu du seuil dur >500k€) — l'échelle log reflète mieux des écarts de
-    # CA qui varient sur plusieurs ordres de grandeur.
-    #
-    # Corrigé le 2026-07-04 (même défaut que le résultat net ci-dessus,
-    # à plus petite échelle : 1 pt sur 9 au lieu de 3) : un CA manquant
-    # contribuait 0.0, identique à un CA confirmé sous CA_RAMP_LOG_LOW —
-    # confondant à nouveau "donnée non récupérée" et "confirmé faible".
-    # Crédit neutre de 0.5 (milieu de la rampe) quand ca est inconnu.
-    ca_valid = df["ca"].notna()
-    log_lo, log_hi = math.log1p(CA_RAMP_LOG_LOW), math.log1p(CA_RAMP_LOG_HIGH)
-    ca_ratio = ((np.log1p(df["ca"].clip(lower=0)) - log_lo) / (log_hi - log_lo)).clip(lower=0.0, upper=1.0)
-    pts += np.where(ca_valid, ca_ratio.fillna(0.0), 0.5)
-
-    return pts / 9.0
+    return (score_rn + score_marge + score_age + score_ca) / 100.0
 
 LABEL_THRESHOLD = 0.60
 
@@ -509,11 +526,12 @@ LABEL_THRESHOLD = 0.60
 def _add_label(df: pd.DataFrame, np_rng: np.random.Generator,
                threshold: float = LABEL_THRESHOLD) -> pd.DataFrame:
 
-    # Un bruit gaussien (σ=0.12) est ajouté au score pour empêcher le modèle
-    # de simplement "mémoriser" la règle déterministe.
+    # Un bruit gaussien (σ=0.08, barème fourni le 2026-07-07) est ajouté au
+    # score pour empêcher le modèle de simplement "mémoriser" la règle
+    # déterministe.
     raw_scores = _compute_raw_score(df)
 
-    noise = np_rng.normal(0, 0.12, size=len(df))
+    noise = np_rng.normal(0, 0.08, size=len(df))
     proba = np.clip(raw_scores + noise, 0, 1)
     df["score_continu"] = proba
     df["label_scoring"] = (proba >= threshold).astype(int)
@@ -605,7 +623,7 @@ def _cmd_generate(args: argparse.Namespace) -> None:
             "telephone": None, "site_web": None,
             "prenom_dirigeant": None, "nom_dirigeant": None, "titre_dirigeant": None,
             "email": None, "ca": None, "ca_n1": None, "resultat_net": None,
-            "score_intent": 0.0,
+            "score_exploitabilite": 0.0,
             "latitude": None, "longitude": None,
         })
 
@@ -622,7 +640,7 @@ def _cmd_generate(args: argparse.Namespace) -> None:
             for col in (
                 "telephone", "site_web", "prenom_dirigeant", "nom_dirigeant",
                 "titre_dirigeant", "email", "ca", "ca_n1", "resultat_net",
-                "score_intent", "latitude", "longitude",
+                "score_exploitabilite", "latitude", "longitude",
             ):
                 if col in fields:
                     df.at[i, col] = fields[col]
@@ -640,7 +658,7 @@ def _cmd_generate(args: argparse.Namespace) -> None:
         "company_name", "siret", "secteur", "taille_entreprise", "adresse",
         "telephone", "site_web", "prenom_dirigeant", "nom_dirigeant",
         "titre_dirigeant", "email", "ca", "ca_n1", "resultat_net",
-        "date_creation", "score_intent", "latitude", "longitude",
+        "date_creation", "score_exploitabilite", "latitude", "longitude",
         "age_entreprise", "croissance_ca", "marge_nette",
         "has_email", "has_phone", "has_website", "has_dirigeant",
         "score_continu", "label_scoring",
@@ -920,14 +938,13 @@ def impute_has_features(df: pd.DataFrame, rng: np.random.Generator) -> pd.DataFr
     return df
 
 
-def recompute_score_intent(df: pd.DataFrame) -> pd.DataFrame:
-    """Recalcule score_intent depuis les features binaires (pas les champs bruts)."""
-    df["score_intent"] = (
-        25 * df["has_email"] +
+def recompute_score_exploitabilite(df: pd.DataFrame) -> pd.DataFrame:
+    """Recalcule score_exploitabilite depuis les features binaires (pas les champs bruts)."""
+    df["score_exploitabilite"] = (
+        40 * df["has_email"] +
         25 * df["has_phone"] +
         20 * df["has_website"] +
-        15 * df["has_dirigeant"] +
-        15 * df["ca"].notna().astype(int)
+        15 * df["has_dirigeant"]
     )
     return df
 
@@ -947,15 +964,15 @@ def _cmd_impute(args: argparse.Namespace) -> None:
     print(f"\n  Couverture AVANT imputation ({len(df):,} leads) :")
     for feat in ["has_email", "has_phone", "has_website"]:
         print(f"    {feat:<15} {df[feat].mean()*100:.1f}%")
-    print(f"    score_intent moyen : {df['score_intent'].mean():.1f}")
+    print(f"    score_exploitabilite moyen : {df['score_exploitabilite'].mean():.1f}")
 
     rng = np.random.default_rng(args.seed)
 
     # Imputation des features binaires
     df = impute_has_features(df, rng)
 
-    # Recalcul score_intent depuis les has_* mis à jour
-    df = recompute_score_intent(df)
+    # Recalcul score_exploitabilite depuis les has_* mis à jour
+    df = recompute_score_exploitabilite(df)
 
     # Suppression des colonnes brutes (vides à 100%, inutiles pour le ML)
     cols_to_drop = [c for c in _RAW_CONTACT_COLS if c in df.columns]
@@ -999,7 +1016,7 @@ def _cmd_impute(args: argparse.Namespace) -> None:
             rate = df[field].notna().mean()
         bar = "█" * int(rate * 20) + "░" * (20 - int(rate * 20))
         print(f"  {label:<22} {rate*100:5.1f}%  {bar}")
-    print(f"\n  score_intent moyen : {df['score_intent'].mean():.1f}")
+    print(f"\n  score_exploitabilite moyen : {df['score_exploitabilite'].mean():.1f}")
     print(f"  label=1 : {n_pos:,} ({n_pos/n*100:.1f}%)")
     print(f"{'═'*52}\n")
 

@@ -21,7 +21,7 @@ class LeadResponse(BaseModel):
     ca: int | None
     ca_n1: int | None
     resultat_net: int | None
-    score_intent: float | None
+    score_exploitabilite: float | None
     latitude: float | None
     longitude: float | None
     # Champs scoring

@@ -4,7 +4,10 @@ Stratégie (dans l'ordre) :
   1. extruct — données structurées JSON-LD / Microdata (schema.org Organization, ContactPoint…)
   2. Regex  — balayage brut du HTML (fallback si extruct ne trouve rien)
 
-Emails filtrés : noreply, support, contact générique, webmaster, etc.
+Emails filtrés : adresses automatisées/non lues par un humain (noreply, postmaster,
+abuse…), bureaux étrangers, domaines incohérents avec le site. Les adresses
+génériques mais fonctionnelles (contact@, info@, hello@, support@…) sont acceptées
+— une boîte générique surveillée par une équipe reste exploitable en prospection B2B.
 Ne fonctionne que si lead.site_web est renseigné.
 """
 
@@ -21,12 +24,12 @@ _EMAIL_RE = re.compile(
     r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"
 )
 
-_GENERIC_PREFIXES = frozenset(
-    [
-        "noreply", "no-reply", "donotreply", "support", "contact",
-        "info", "hello", "webmaster", "admin", "postmaster",
-        "abuse", "help", "service", "newsletter", "marketing",
-    ]
+# Adresses automatisées : jamais lues par un humain, sender à éviter (bounces,
+# plaintes spam). Contrairement à contact@/info@/hello@, une boîte générique mais
+# surveillée par une équipe, ces alias ne sont fonctionnels pour aucun usage de
+# prospection quel que soit le destinataire visé.
+_NONFUNCTIONAL_PREFIXES = frozenset(
+    ["noreply", "no-reply", "donotreply", "postmaster", "abuse"]
 )
 
 # Mots géographiques indiquant un bureau étranger (hello-spain@, london@, etc.)
@@ -89,12 +92,12 @@ def is_valid_prospection_email(email: str, company_domain: str | None = None) ->
     if tld in _IMAGE_EXTS:
         return False
 
-    if prefix in _GENERIC_PREFIXES or prefix in _PLACEHOLDER_PREFIXES:
+    if prefix in _NONFUNCTIONAL_PREFIXES or prefix in _PLACEHOLDER_PREFIXES:
         return False
 
     # Emails de bureaux géographiques : london@, spain@, hello-uk@…
     prefix_parts = re.split(r"[-_.]", prefix)
-    if any(p in _GENERIC_PREFIXES or p in _GEO_WORDS for p in prefix_parts):
+    if any(p in _NONFUNCTIONAL_PREFIXES or p in _GEO_WORDS for p in prefix_parts):
         return False
 
     if domain in _PLACEHOLDER_DOMAINS:

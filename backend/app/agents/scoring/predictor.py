@@ -23,6 +23,10 @@ _MODELS_DIR = Path(__file__).resolve().parent.parent.parent.parent / "models"
 
 _model: xgb.XGBRegressor | None = None
 _config: dict | None = None
+# Calibration isotonique post-hoc (corrige le shrinkage des deux queues de la
+# régression XGBoost — voir ml/train_scoring_model.py). None = pas de calibrateur
+# trouvé (ancien modèle non réentraîné) → score brut renvoyé tel quel.
+_calibrator = None
 
 # Labels lisibles en français pour l'interface de validation
 _FEATURE_LABELS_FR: dict[str, str] = {
@@ -35,10 +39,6 @@ _FEATURE_LABELS_FR: dict[str, str] = {
     "marge_nette":     "Marge nette",
     "croissance_ca":   "Croissance CA",
     "age_entreprise":  "Ancienneté entreprise",
-    "has_email":       "Email disponible",
-    "has_phone":       "Téléphone disponible",
-    "has_website":     "Site web disponible",
-    "has_dirigeant":   "Dirigeant identifié",
     "taille_code":     "Taille entreprise",
     "secteur_code":    "Secteur NAF",
     "ca_par_salarie_log1p": "CA par salarié",
@@ -59,20 +59,17 @@ _FEATURE_GROUPS: dict[str, str] = {
     "age_entreprise":       "anciennete",
     "taille_code":          "taille",
     "secteur_code":         "secteur",
-    "has_email":            "contactabilite",
-    "has_phone":            "contactabilite",
-    "has_website":          "contactabilite",
-    "has_dirigeant":        "contactabilite",
 }
 
 
 def _load() -> None:
-    global _model, _config
+    global _model, _config, _calibrator
     if _model is not None:
         return
 
     model_path = _MODELS_DIR / "xgboost_scoring.joblib"
     config_path = _MODELS_DIR / "feature_config.json"
+    calibrator_path = _MODELS_DIR / "score_calibrator.joblib"
 
     if not model_path.exists():
         raise FileNotFoundError(
@@ -82,6 +79,28 @@ def _load() -> None:
 
     _model = joblib.load(model_path)
     _config = json.loads(config_path.read_text())
+
+    # Chargement défensif : le calibrateur est un objet scikit-learn distinct du
+    # modèle XGBoost — une dépendance manquante ou un fichier corrompu ne doit
+    # pas empêcher le scoring de fonctionner (dégradé, non calibré) alors que le
+    # modèle lui-même a chargé sans problème (cf. incident 2026-07-07 :
+    # scikit-learn absent de l'image Docker prod, _load() plantait entièrement).
+    try:
+        if calibrator_path.exists():
+            _calibrator = joblib.load(calibrator_path)
+            logger.info("Calibrateur isotonique chargé depuis %s", calibrator_path)
+        else:
+            _calibrator = None
+            logger.warning(
+                "Calibrateur introuvable (%s) — scores non calibrés (modèle non "
+                "réentraîné depuis l'introduction de la calibration isotonique)",
+                calibrator_path,
+            )
+    except Exception:
+        _calibrator = None
+        logger.exception(
+            "Échec du chargement du calibrateur (%s) — scores non calibrés", calibrator_path
+        )
     logger.info("Modèle XGBoost (régression) chargé depuis %s", model_path)
 
 
@@ -95,14 +114,24 @@ def _prob_to_label(prob: float) -> str:
     return "HORS_CIBLE"
 
 
+# Une feature dont la contribution pèse moins de 5% du total |contributions| est
+# considérée comme du bruit statistique plutôt qu'un vrai facteur explicatif (ex:
+# secteur_code sur un lead dont le NAF est déjà fixé par le filtre de campagne) —
+# on préfère afficher moins de 5 facteurs qu'un facteur négligeable à tort étiqueté
+# "limitant".
+_MIN_CONTRIB_SHARE = 0.05
+
+
 def _compute_shap(X: np.ndarray, feature_names: list[str]) -> str:
-    """Calcule les contributions SHAP (pred_contribs) et retourne les 5 features les
-    plus contributives, une seule par groupe sémantique (voir _FEATURE_GROUPS)."""
+    """Calcule les contributions SHAP (pred_contribs) et retourne jusqu'à 5 features
+    les plus contributives, une seule par groupe sémantique (voir _FEATURE_GROUPS),
+    en excluant celles dont la contribution est négligeable (voir _MIN_CONTRIB_SHARE)."""
     booster = _model.get_booster()
     dmatrix = xgb.DMatrix(X, feature_names=feature_names)
     # contribs shape : (1, n_features + 1) — dernier élément = biais
     contribs = booster.predict(dmatrix, pred_contribs=True)
     feature_contribs = contribs[0, :-1]
+    total_abs = float(np.abs(feature_contribs).sum())
 
     # Parcourt toutes les features par |contribution| décroissante, en ne
     # gardant que la première (donc la plus contributive) de chaque groupe.
@@ -110,6 +139,8 @@ def _compute_shap(X: np.ndarray, feature_names: list[str]) -> str:
     seen_groups: set[str] = set()
     top_indices: list[int] = []
     for i in ranked_indices:
+        if total_abs > 0 and abs(feature_contribs[i]) / total_abs < _MIN_CONTRIB_SHARE:
+            continue
         group = _FEATURE_GROUPS.get(feature_names[i], feature_names[i])
         if group in seen_groups:
             continue
@@ -131,11 +162,18 @@ def _compute_shap(X: np.ndarray, feature_names: list[str]) -> str:
 
 
 def predict(lead: Lead) -> tuple[float, str, str | None]:
-    """Retourne (score, label, shap_json) pour un lead."""
+    """Retourne (score, label, shap_json) pour un lead.
+
+    Le score renvoyé est calibré (isotonic regression, voir _load) quand un
+    calibrateur est disponible — le SHAP reste calculé sur la sortie brute du
+    modèle : la calibration est un réétalonnage monotone final de l'échelle,
+    pas une transformation feature par feature, donc elle n'a pas sa place
+    dans la décomposition des contributions."""
     _load()
     X = build_feature_vector(lead, _config)
     # clip : protège contre un léger dépassement de [0,1] sur des leads très extrêmes.
-    prob = float(np.clip(_model.predict(X)[0], 0.0, 1.0))
+    raw = float(np.clip(_model.predict(X)[0], 0.0, 1.0))
+    prob = float(np.clip(_calibrator.predict([raw])[0], 0.0, 1.0)) if _calibrator is not None else raw
     try:
         shap_json = _compute_shap(X, _config["feature_names"])
     except Exception as exc:

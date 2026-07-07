@@ -19,7 +19,8 @@ class CampaignCreate(BaseModel):
     tranches_effectifs: list[str]
     quota: int = 50
     estimated_prospects: int = 0
-    score_minimum: float = 0.5
+    # 0.65 (2026-07-07) : voir models/campaign.py pour le contexte de la recalibration
+    score_minimum: float = 0.65
 
     @field_validator("quota")
     @classmethod

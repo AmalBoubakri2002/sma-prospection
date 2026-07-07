@@ -24,6 +24,15 @@ def _or_group(field: str, values: list[str], period: bool) -> str:
 def build_query(
     codes_naf: list[str], codes_postaux: list[str], tranches_effectifs: list[str]
 ) -> str:
+    # activitePrincipaleEtablissement DOIT passer par periode(...) : contrairement
+    # à codePostalEtablissement/trancheEffectifsEtablissement, l'API Sirene
+    # n'expose ce champ qu'à l'intérieur de periodesEtablissement — une requête
+    # period=False renvoie une 400 "Erreur de syntaxe dans le paramètre q" (testé
+    # en prod le 2026-07-07). Conséquence assumée : periode(...) matche un NAF
+    # détenu à N'IMPORTE QUEL moment de l'historique, pas forcément aujourd'hui —
+    # un établissement reclassé depuis peut matcher sur un ancien NAF. Le filtre
+    # sur le NAF ACTUEL est donc fait en aval, sur le résultat déjà reçu (voir
+    # agent.py::run_veille), pas ici dans la requête.
     groups = [
         _or_group("activitePrincipaleEtablissement", codes_naf, period=True),
         _or_group("codePostalEtablissement", codes_postaux, period=False),

@@ -34,7 +34,7 @@ interface Lead {
   ca: number | null;
   resultat_net: number | null;
   score: number | null;
-  score_intent: number | null;
+  score_exploitabilite: number | null;
   label_scoring: "CHAUD" | "TIEDE" | "FROID" | "HORS_CIBLE" | null;
   objet_email: string | null;
   contenu_email: string | null;
@@ -184,7 +184,7 @@ function LeadDrawer({ lead, onClose, onValidate, onSaveEmail }: LeadDrawerProps)
           {lead.shap_explication && (
             <div style={{ marginTop: 14 }}>
               <Text style={{ fontSize: 11.5, fontWeight: 700, color: C.textMuted, textTransform: "uppercase", letterSpacing: 0.4, display: "block", marginBottom: 10 }}>
-                Top 5 facteurs explicatifs
+                Facteurs explicatifs
               </Text>
               <ShapPanel shapJson={lead.shap_explication} />
             </div>
