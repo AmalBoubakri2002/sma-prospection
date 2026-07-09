@@ -73,5 +73,11 @@ class Settings(BaseSettings):
     # d'auto-évaluation dans ce cas).
     REDACTION_EVAL_JUDGE_MODEL: str = ""
 
+    # CRM Odoo 17 — Agent CRM (app/services/odoo_client.py)
+    ODOO_URL: str = "http://localhost:8069"
+    ODOO_DB: str = "odoo"
+    ODOO_USERNAME: str = ""
+    ODOO_PASSWORD: str = ""
+
 
 settings = Settings()

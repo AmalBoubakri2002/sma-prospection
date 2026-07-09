@@ -32,6 +32,7 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sma_user}:${POSTGRES_PASSWORD:-sma_password}@postgres:5432/${POSTGRES_DB:-sma_db}
+      ODOO_URL: http://odoo:8069
     depends_on:
       postgres:
         condition: service_healthy
@@ -53,6 +54,7 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sma_user}:${POSTGRES_PASSWORD:-sma_password}@postgres:5432/${POSTGRES_DB:-sma_db}
+      ODOO_URL: http://odoo:8069
       DEBUG: "false"
     depends_on:
       postgres:
@@ -67,10 +69,53 @@ services:
       - ./backend/.env
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sma_user}:${POSTGRES_PASSWORD:-sma_password}@postgres:5432/${POSTGRES_DB:-sma_db}
+      ODOO_URL: http://odoo:8069
       DEBUG: "false"
     depends_on:
       postgres:
         condition: service_healthy
 
+  odoo-db:
+    image: postgres:16-alpine
+    container_name: sma_odoo_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${ODOO_DB_USER:-odoo}
+      POSTGRES_PASSWORD: ${ODOO_DB_PASSWORD:-odoo}
+      POSTGRES_DB: postgres
+    volumes:
+      - odoo_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ODOO_DB_USER:-odoo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  odoo:
+    image: odoo:17.0
+    container_name: sma_odoo
+    restart: unless-stopped
+    ports:
+      - "8069:8069"
+    environment:
+      HOST: odoo-db
+      USER: ${ODOO_DB_USER:-odoo}
+      PASSWORD: ${ODOO_DB_PASSWORD:-odoo}
+    volumes:
+      - odoo_web_data:/var/lib/odoo
+      - ./odoo/addons:/mnt/extra-addons
+    depends_on:
+      odoo-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8069/web/login >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
 volumes:
   postgres_data:
+  odoo_db_data:
+  odoo_web_data:
