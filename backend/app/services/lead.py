@@ -241,6 +241,29 @@ async def update_lead_email_content(
     return lead
 
 
+async def list_leads_to_sync_crm(
+    db: AsyncSession, campaign_id: uuid.UUID, page_size: int = 50
+) -> list[Lead]:
+    """Leads en statut VALIDE pour une campagne — entrée de l'Agent CRM."""
+    stmt = (
+        select(Lead)
+        .where(Lead.campaign_id == campaign_id, Lead.status == LeadStatus.VALIDE)
+        .order_by(Lead.created_at.asc())
+        .limit(page_size)
+    )
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def update_lead_synced_crm(db: AsyncSession, lead: Lead) -> Lead:
+    """Passe le lead en SYNCHRONISE_CRM une fois le push Odoo réussi."""
+    lead.status = LeadStatus.SYNCHRONISE_CRM
+    db.add(lead)
+    await db.commit()
+    await db.refresh(lead)
+    return lead
+
+
 async def get_leads_stats(db: AsyncSession, commercial_id: uuid.UUID) -> dict:
     """Agrégats KPI pour le dashboard commercial."""
     base = (

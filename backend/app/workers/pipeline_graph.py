@@ -11,6 +11,7 @@ from typing import NotRequired, TypedDict
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from app.agents.crm.agent import run_crm
 from app.agents.enrichissement.agent import run_enrichissement
 from app.agents.redaction.agent import run_redaction
 from app.agents.scoring.agent import run_scoring
@@ -185,18 +186,24 @@ async def node_redaction(state: CampaignPipelineState) -> dict:
 # ── Nœud 5 : CRM (reprise après HITL) ────────────────────────────────────────
 
 async def node_crm(state: CampaignPipelineState) -> dict:
-    """Stub M4 : marque la campagne terminée ; sync CRM Odoo réelle à implémenter."""
     campaign_id = state["campaign_id"]
     logger.info("[CRM] Démarrage synchronisation — campagne %s", campaign_id)
 
-    # TODO M4 : Agent CRM — pousser les leads VALIDE vers Odoo 17 via JSON-RPC 2.0
     async with AsyncSessionLocal() as db:
         campaign = await db.get(Campaign, uuid.UUID(campaign_id))
-        if campaign:
+        if campaign is None:
+            return {"error": f"Campagne {campaign_id} introuvable"}
+        try:
+            result = await run_crm(db, campaign)
             await update_campaign_status(db, campaign, "completed")
-
-    logger.info("[CRM] Pipeline campagne %s terminé (Agent CRM à implémenter M4)", campaign_id)
-    return {"crm": {"status": "pending_implementation"}}
+            logger.info(
+                "[CRM] Terminé — %d leads synchronisés vers Odoo", result.get("leads_synchronises", 0)
+            )
+            return {"crm": result}
+        except Exception as exc:
+            logger.exception("[CRM] Échec")
+            await update_campaign_status(db, campaign, "crm_failed")
+            return {"error": str(exc)}
 
 
 # ── Routage conditionnel — court-circuit sur erreur ───────────────────────────
