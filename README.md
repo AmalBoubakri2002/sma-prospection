@@ -1,6 +1,8 @@
 # SMA Prospection — ProspectAI
 
-Plateforme de prospection B2B avec orchestration multi-agent (LangGraph).
+Plateforme de prospection B2B avec orchestration multi-agent (LangGraph) : de la
+recherche d'entreprises à la synchronisation CRM, avec validation humaine (HITL)
+avant l'envoi des emails.
 
 ## Stack
 
@@ -9,8 +11,28 @@ Plateforme de prospection B2B avec orchestration multi-agent (LangGraph).
 | Frontend | React 18 + TypeScript + Ant Design + Vite |
 | Backend | FastAPI + Python 3.11 + SQLAlchemy (async) |
 | Base de données | PostgreSQL 16 |
-| Agents IA | LangGraph + Mistral API *(à venir)* |
+| Agents IA | LangGraph + XGBoost (scoring) + API NVIDIA (rédaction) |
+| CRM | Odoo 17 Community (Docker) |
 | DevOps | Docker Compose |
+
+## Pipeline multi-agent
+
+Orchestré via un graphe LangGraph (`backend/app/workers/pipeline_graph.py`), avec
+reprise automatique des tâches bloquées par `orchestrateur.py` :
+
+```
+Veille → Enrichissement → Check quota → Scoring → Rédaction → [validation commerciale] → CRM
+```
+
+- **Veille** — recherche d'entreprises cibles (API SIRENE)
+- **Enrichissement** — BODACC, INPI, recherche d'entreprises, scraping email/téléphone, géocodage
+- **Scoring** — régression XGBoost sur les leads, label (`HORS_CIBLE`/`FROID`/`TIEDE`/`CHAUD`)
+- **Rédaction** — génération d'emails personnalisés (API NVIDIA), avec file de validation humaine (HITL) avant envoi
+- **CRM** — synchronisation des leads validés vers Odoo (stage, vendeur assigné, historique email dans le chatter)
+
+Si le worker redémarre pendant la pause HITL, la reprise bascule automatiquement
+sur une tâche CRM manuelle plutôt que d'échouer, car les leads validés sont déjà
+en base à ce stade.
 
 ## État du projet
 
@@ -20,13 +42,14 @@ Plateforme de prospection B2B avec orchestration multi-agent (LangGraph).
 - CRUD commerciaux (admin)
 - Dashboard admin (stats équipe)
 - Dashboard commercial (KPIs, campagnes)
-- Formulaire de création de campagne (UI)
+- Création et suivi de campagnes (UI + file de validation des leads/emails)
+- Pipeline complet Veille → Enrichissement → Scoring → Rédaction → CRM (LangGraph)
+- Intégration CRM Odoo 17 (stage, vendeur, historique)
+- Orchestrateur de reprise automatique des tâches en échec
 
 ### À venir
-- Agent Veille (SIRENE + LinkedIn)
-- Agent Scoring (XGBoost + SHAP)
-- Agent Rédaction (Mistral)
-- Intégration CRM Odoo 17
+- Notifications temps réel (au-delà du polling actuel)
+- Tableaux de bord d'analyse de campagne (SHAP / explicabilité du scoring)
 
 ## Démarrage rapide
 
@@ -44,11 +67,14 @@ cp .env.example .env
 # Remplir les variables dans .env
 ```
 
-### 2. Base de données
+### 2. Base de données & services
 
 ```bash
 docker compose up -d
 ```
+
+Démarre PostgreSQL (app), PostgreSQL + Odoo 17 (CRM), le worker pipeline et
+l'orchestrateur. Odoo : `http://localhost:8069`.
 
 ### 3. Backend
 
@@ -80,20 +106,31 @@ sma-prospection/
 ├── frontend/src/
 │   ├── pages/
 │   │   ├── LoginPage.tsx
-│   │   ├── admin/          # Dashboard, Commerciaux
-│   │   └── commercial/     # Dashboard, NewCampaignPage
-│   ├── components/         # AdminLayout, CommercialLayout, ProtectedRoute
-│   ├── stores/             # authStore (Zustand + persist)
-│   ├── utils/              # api.ts (axios + intercepteurs JWT)
-│   └── styles/             # tokens.ts (design system)
+│   │   ├── admin/               # Dashboard, Commerciaux
+│   │   └── commercial/          # Dashboard, NewCampaignPage, CampaignLeadsPage, ValidationQueuePage
+│   ├── components/              # AdminLayout, CommercialLayout, ProtectedRoute
+│   ├── stores/                  # authStore (Zustand + persist)
+│   ├── utils/                   # api.ts (axios + intercepteurs JWT)
+│   └── styles/                  # tokens.ts (design system)
 ├── backend/app/
-│   ├── api/v1/             # Routes auth + users
-│   ├── core/               # Config, sécurité JWT
-│   ├── db/                 # Session SQLAlchemy async
-│   ├── models/             # User
-│   ├── schemas/            # Pydantic (UserCreate, UserResponse, Token…)
-│   └── services/           # Logique métier utilisateurs
-├── docker-compose.yml      # PostgreSQL 16
+│   ├── agents/
+│   │   ├── veille/            # Recherche d'entreprises (SIRENE)
+│   │   ├── enrichissement/    # BODACC, INPI, scraping email/téléphone, géocodage
+│   │   ├── scoring/           # Régression XGBoost + feature builder
+│   │   ├── redaction/         # Génération d'emails (API NVIDIA)
+│   │   └── crm/               # Synchronisation Odoo (mapping, push, historique)
+│   ├── workers/
+│   │   ├── pipeline_graph.py  # Graphe LangGraph (veille→…→crm), pause HITL
+│   │   ├── worker_pipeline.py # Point d'entrée : poll + exécute les tâches agents
+│   │   └── orchestrateur.py   # Reprise automatique des tâches/campagnes bloquées
+│   ├── api/v1/                # Routes auth, users, campaigns, leads, notifications, webhooks
+│   ├── core/                  # Config, sécurité JWT
+│   ├── db/                    # Session SQLAlchemy async
+│   ├── models/                # User, Campaign, Lead, AgentTask, CrmSync, Notification
+│   ├── schemas/                # Pydantic
+│   └── services/              # Logique métier (leads, campagnes, Odoo client…)
+├── odoo/addons/                # Module CRM Odoo custom (champs x_score_ia, x_label_ia, x_sma_pc_id…)
+├── docker-compose.yml          # PostgreSQL, Odoo 17, worker pipeline, orchestrateur
 └── .env.example
 ```
 
