@@ -20,6 +20,7 @@ def test_build_odoo_payload_maps_core_fields():
         nom_dirigeant="Dupont",
         email="jean.dupont@acme.fr",
         telephone="0102030405",
+        site_web="https://acme.fr",
         secteur="6201Z",
         score=0.87,
         label_scoring="CHAUD",
@@ -31,11 +32,20 @@ def test_build_odoo_payload_maps_core_fields():
     assert payload["partner_name"] == "Jean Dupont"
     assert payload["email_from"] == "jean.dupont@acme.fr"
     assert payload["phone"] == "0102030405"
+    assert payload["website"] == "https://acme.fr"
     assert payload["x_sector"] == "6201Z"
     assert payload["x_score_ia"] == 0.87
     assert payload["x_label_ia"] == "CHAUD"
+    assert payload["priority"] == "3"
     assert payload["description"] == "<p>Bonjour Jean...</p>"
     assert payload["x_sma_pc_id"] == str(lead.id)
+
+
+def test_build_odoo_payload_priority_covers_all_labels():
+    expected = {"HORS_CIBLE": "0", "FROID": "1", "TIEDE": "2", "CHAUD": "3"}
+    for label, priority in expected.items():
+        lead = _make_lead(label_scoring=label)
+        assert build_odoo_payload(lead)["priority"] == priority
 
 
 def test_build_odoo_payload_omits_missing_optional_fields():

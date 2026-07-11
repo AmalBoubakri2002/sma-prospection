@@ -2,6 +2,16 @@
 
 from app.models.lead import Lead
 
+# label_scoring (Agent Scoring) -> priority Odoo (0=Low ... 3=Very High).
+# Mapping bijectif : 4 labels SMA-PC, 4 niveaux Odoo.
+_LABEL_TO_PRIORITY = {
+    "HORS_CIBLE": "0",
+    "FROID": "1",
+    "TIEDE": "2",
+    "CHAUD": "3",
+}
+
+
 def build_odoo_payload(lead: Lead) -> dict:
     contact_name = " ".join(
         part for part in (lead.prenom_dirigeant, lead.nom_dirigeant) if part
@@ -12,9 +22,11 @@ def build_odoo_payload(lead: Lead) -> dict:
         "partner_name": contact_name or None,
         "email_from": lead.email,
         "phone": lead.telephone,
+        "website": lead.site_web,
         "x_sector": lead.secteur,
         "x_score_ia": lead.score,
         "x_label_ia": lead.label_scoring,
+        "priority": _LABEL_TO_PRIORITY.get(lead.label_scoring),
         "description": lead.contenu_email,
         "x_sma_pc_id": str(lead.id),
     }

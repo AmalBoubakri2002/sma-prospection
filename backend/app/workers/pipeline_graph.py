@@ -171,10 +171,24 @@ async def node_redaction(state: CampaignPipelineState) -> dict:
             return {"error": f"Campagne {campaign_id} introuvable"}
         try:
             result = await run_redaction(db, campaign)
+            emails_generes = result.get("emails_generes", 0)
+            leads_erreurs = result.get("leads_erreurs", 0)
+
+            # Échec total (ex : modèle NVIDIA DEGRADED) — ne pas afficher une file de
+            # validation vide comme si le run avait réussi. On repasse par "redaction_failed",
+            # présent dans _RECOVERY_MAP, pour que l'orchestrateur retente automatiquement.
+            if emails_generes == 0 and leads_erreurs > 0:
+                logger.error(
+                    "[Rédaction] Échec total — %d leads en erreur, aucun email généré",
+                    leads_erreurs,
+                )
+                await update_campaign_status(db, campaign, "redaction_failed")
+                return {"error": f"Rédaction : {leads_erreurs} leads en erreur, aucun email généré"}
+
             await update_campaign_status(db, campaign, "en_attente_validation")
             logger.info(
                 "[Rédaction] Terminé — %d emails en attente de validation",
-                result.get("emails_generes", 0),
+                emails_generes,
             )
             return {"redaction": result}
         except Exception as exc:

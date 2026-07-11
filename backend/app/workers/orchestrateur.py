@@ -33,6 +33,10 @@ _RECOVERY_MAP: dict[str, str] = {
     "scoring_failed":          AgentName.PIPELINE,
     "redaction_pending":       AgentName.PIPELINE,
     "redaction_failed":        AgentName.PIPELINE,
+    # CRM : reprise via une tâche CRM directe (pas PIPELINE) — à ce stade les leads
+    # à synchroniser sont déjà VALIDE en base, pas besoin de rejouer veille→rédaction.
+    "crm_pending":             AgentName.CRM,
+    "crm_failed":              AgentName.CRM,
 }
 _STUCK_STATUSES = list(_RECOVERY_MAP.keys())
 

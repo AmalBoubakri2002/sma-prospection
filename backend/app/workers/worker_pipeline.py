@@ -1,7 +1,10 @@
-"""Worker Pipeline — point d'entrée unique pour les tâches PIPELINE, PIPELINE_RESUME, SCORING et REDACTION.
+"""Worker Pipeline — point d'entrée unique pour les tâches PIPELINE, PIPELINE_RESUME, SCORING, REDACTION et CRM.
 
 MemorySaver garde l'état HITL en mémoire du process : si le worker redémarre entre la
-suspension et la validation commerciale, l'état est perdu et il faut relancer via POST /start.
+suspension et la validation commerciale, l'état est perdu — resume_pipeline bascule alors
+sur une tâche CRM manuelle (run_crm_task) plutôt que d'échouer, puisqu'à ce stade les leads
+à synchroniser sont déjà VALIDE en base (l'état perdu ne concerne que la position dans le
+graphe LangGraph, pas les données).
 """
 
 import asyncio
@@ -10,6 +13,7 @@ import uuid
 
 from langgraph.types import Command
 
+from app.agents.crm.agent import run_crm
 from app.agents.redaction.agent import run_redaction
 from app.agents.scoring.agent import run_scoring
 from app.core.config import settings
@@ -101,22 +105,22 @@ async def resume_pipeline(task_id: uuid.UUID) -> None:
     config = {"configurable": {"thread_id": campaign_id}}
 
     if campaign_id not in _waiting_for_hitl:
-        logger.error(
-            "Pipeline campagne %s — aucun état HITL en mémoire "
-            "(redémarrage du worker ?). Utiliser POST /start pour relancer.",
+        # État LangGraph perdu (redémarrage du worker pendant la pause HITL) — mais les
+        # leads validés par le commercial sont déjà VALIDE en base, donc on bascule sur
+        # une tâche CRM manuelle plutôt que d'échouer et de laisser la campagne bloquée.
+        logger.warning(
+            "Pipeline campagne %s — état HITL perdu (redémarrage du worker), "
+            "bascule sur une tâche CRM manuelle",
             campaign_id,
         )
         async with AsyncSessionLocal() as db:
             task = await db.get(AgentTask, task_id)
             campaign = await get_campaign_by_id(db, uuid.UUID(campaign_id))
             if task:
-                task.attempts = task.max_attempts
-                await mark_failed_or_retry(
-                    db, task,
-                    "État HITL perdu (redémarrage du worker). Relancer via POST /start.",
-                )
+                await mark_done(db, task, {"status": "hitl_state_lost", "fallback": "crm_manual"})
             if campaign:
-                await update_campaign_status(db, campaign, "redaction_done")
+                await create_task(db, campaign.id, AgentName.CRM, {"recovery": True})
+                await update_campaign_status(db, campaign, "crm_pending")
         return
 
     _waiting_for_hitl.discard(campaign_id)
@@ -192,6 +196,17 @@ async def run_scoring_task(task_id: uuid.UUID) -> None:
     )
 
 
+async def _run_redaction_or_raise(db, campaign) -> dict:
+    """Échec total (ex : modèle NVIDIA DEGRADED) → lève pour que _run_manual_agent_task
+    bascule sur failure_status au lieu de marquer 'en_attente_validation' une file vide."""
+    result = await run_redaction(db, campaign)
+    if result.get("emails_generes", 0) == 0 and result.get("leads_erreurs", 0) > 0:
+        raise RuntimeError(
+            f"Rédaction : {result['leads_erreurs']} leads en erreur, aucun email généré"
+        )
+    return result
+
+
 async def run_redaction_task(task_id: uuid.UUID) -> None:
     """Génère les emails des leads QUALIFIE d'une campagne (tâche REDACTION manuelle)."""
     async def _on_success(db, campaign, result):
@@ -200,8 +215,25 @@ async def run_redaction_task(task_id: uuid.UUID) -> None:
             await notify_emails_prets(db, campaign.commercial_id, nb)
 
     await _run_manual_agent_task(
-        task_id, run_redaction, "en_attente_validation", "redaction_failed", on_success=_on_success
+        task_id, _run_redaction_or_raise, "en_attente_validation", "redaction_failed", on_success=_on_success
     )
+
+
+async def _run_crm_or_raise(db, campaign) -> dict:
+    """Échec total (ex : Odoo injoignable) → lève pour que _run_manual_agent_task
+    bascule sur 'crm_failed' au lieu de marquer 'completed' sans rien avoir synchronisé."""
+    result = await run_crm(db, campaign)
+    if result.get("leads_synchronises", 0) == 0 and result.get("leads_erreurs", 0) > 0:
+        raise RuntimeError(
+            f"CRM : {result['leads_erreurs']} leads en erreur, aucune synchronisation Odoo"
+        )
+    return result
+
+
+async def run_crm_task(task_id: uuid.UUID) -> None:
+    """Synchronise les leads VALIDE d'une campagne vers Odoo (tâche CRM manuelle —
+    utilisée en secours quand l'état HITL du graphe LangGraph a été perdu, voir resume_pipeline)."""
+    await _run_manual_agent_task(task_id, _run_crm_or_raise, "completed", "crm_failed")
 
 
 # ── Boucle de polling ─────────────────────────────────────────────────────────
@@ -214,6 +246,7 @@ async def poll_once() -> int:
         resume_tasks    = await get_pending_tasks(db, AgentName.PIPELINE_RESUME)
         scoring_tasks   = await get_pending_tasks(db, AgentName.SCORING)
         redaction_tasks = await get_pending_tasks(db, AgentName.REDACTION)
+        crm_tasks       = await get_pending_tasks(db, AgentName.CRM)
 
     for task in pipeline_tasks:
         asyncio.create_task(run_new_pipeline(task.id))
@@ -223,8 +256,13 @@ async def poll_once() -> int:
         asyncio.create_task(run_scoring_task(task.id))
     for task in redaction_tasks:
         asyncio.create_task(run_redaction_task(task.id))
+    for task in crm_tasks:
+        asyncio.create_task(run_crm_task(task.id))
 
-    processed = len(pipeline_tasks) + len(resume_tasks) + len(scoring_tasks) + len(redaction_tasks)
+    processed = (
+        len(pipeline_tasks) + len(resume_tasks) + len(scoring_tasks)
+        + len(redaction_tasks) + len(crm_tasks)
+    )
     return processed
 
 
@@ -234,7 +272,7 @@ async def main() -> None:
         settings.WORKER_POLL_INTERVAL_SECONDS,
     )
     async with AsyncSessionLocal() as db:
-        for agent in (AgentName.PIPELINE, AgentName.PIPELINE_RESUME, AgentName.SCORING, AgentName.REDACTION):
+        for agent in (AgentName.PIPELINE, AgentName.PIPELINE_RESUME, AgentName.SCORING, AgentName.REDACTION, AgentName.CRM):
             recovered = await recover_stuck_running_tasks(db, agent)
             if recovered:
                 logger.warning(

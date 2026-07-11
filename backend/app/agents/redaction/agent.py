@@ -188,7 +188,10 @@ async def _generate_email(client: AsyncOpenAI, lead: Lead, model: str) -> tuple[
         raw = raw.strip()
 
     try:
-        data = json.loads(raw)
+        # strict=False : certains modèles (ex. llama-3.1-70b-instruct, utilisé comme
+        # REDACTION_FALLBACK_MODEL) renvoient de vrais retours à la ligne au lieu de
+        # \n échappé dans les chaînes JSON — techniquement invalide en mode strict.
+        data = json.loads(raw, strict=False)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Réponse non-JSON reçue du modèle : {raw[:200]}") from exc
 

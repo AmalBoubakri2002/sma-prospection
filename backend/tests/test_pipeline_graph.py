@@ -15,6 +15,7 @@ from app.workers.pipeline_graph import (
     MAX_VEILLE_RETRIES,
     _route_after_quota_check,
     node_check_quota,
+    node_redaction,
 )
 
 
@@ -118,3 +119,49 @@ def test_route_after_quota_check_needs_more_goes_to_veille():
 
 def test_route_after_quota_check_satisfied_goes_to_scoring():
     assert _route_after_quota_check({"needs_more_leads": False}) == "scoring"
+
+
+def _patch_redaction_db(campaign):
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=campaign)
+
+    @asynccontextmanager
+    async def _session_cm():
+        yield db
+
+    return patch("app.workers.pipeline_graph.AsyncSessionLocal", MagicMock(side_effect=_session_cm)), db
+
+
+@pytest.mark.anyio
+async def test_node_redaction_echec_total_ne_passe_pas_en_attente_validation():
+    """0 email généré + des leads en erreur (ex : modèle NVIDIA DEGRADED) doit
+    marquer la campagne 'redaction_failed' (repris par l'orchestrateur), pas
+    'en_attente_validation' avec une file de validation vide."""
+    campaign = _make_campaign()
+    campaign.id = uuid.uuid4()
+    session_patch, _db = _patch_redaction_db(campaign)
+
+    with session_patch, \
+         patch("app.workers.pipeline_graph.run_redaction", new_callable=AsyncMock,
+               return_value={"emails_generes": 0, "leads_erreurs": 12}), \
+         patch("app.workers.pipeline_graph.update_campaign_status", new_callable=AsyncMock) as mock_update:
+        result = await node_redaction({"campaign_id": str(campaign.id)})
+
+    assert "error" in result
+    mock_update.assert_awaited_once_with(_db, campaign, "redaction_failed")
+
+
+@pytest.mark.anyio
+async def test_node_redaction_succes_passe_en_attente_validation():
+    campaign = _make_campaign()
+    campaign.id = uuid.uuid4()
+    session_patch, _db = _patch_redaction_db(campaign)
+
+    with session_patch, \
+         patch("app.workers.pipeline_graph.run_redaction", new_callable=AsyncMock,
+               return_value={"emails_generes": 10, "leads_erreurs": 2}), \
+         patch("app.workers.pipeline_graph.update_campaign_status", new_callable=AsyncMock) as mock_update:
+        result = await node_redaction({"campaign_id": str(campaign.id)})
+
+    assert "error" not in result
+    mock_update.assert_awaited_once_with(_db, campaign, "en_attente_validation")

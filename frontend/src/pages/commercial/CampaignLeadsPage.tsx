@@ -16,7 +16,6 @@ import { ScoreBadge, formatCA, formatCaOrUnknown, hasPartialFinancials, type Sha
 const { Text, Title } = Typography;
 const { TextArea } = Input;
 
-// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Lead {
   id: string;
@@ -330,6 +329,7 @@ export default function CampaignLeadsPage() {
   const [editThreshold, setEditThreshold] = useState<number>(50);
   const [savingThreshold, setSavingThreshold] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [sendingToOdoo, setSendingToOdoo] = useState(false);
 
   const fetchLeads = useCallback(async (filter: FilterTab) => {
     if (!campaignId) return;
@@ -403,6 +403,22 @@ export default function CampaignLeadsPage() {
     const res = await api.patch<Lead>(`/leads/${leadId}/email`, { objet_email: objet, contenu_email: contenu });
     setLeads((prev) => prev.map((l) => (l.id === leadId ? res.data : l)));
     message.success("Email mis à jour");
+  };
+
+  // Fin de la revue HITL : reprend le pipeline au nœud CRM, qui pousse les
+  // leads VALIDE vers Odoo (voir POST /campaigns/{id}/validate côté backend).
+  const sendToOdoo = async () => {
+    if (!campaignId) return;
+    setSendingToOdoo(true);
+    try {
+      const res = await api.post<Campaign>(`/campaigns/${campaignId}/validate`);
+      setCampaign(res.data);
+      message.success("Envoi vers Odoo lancé — les leads validés apparaîtront sous peu dans le CRM.");
+    } catch (err: any) {
+      message.error(err?.response?.data?.detail ?? "Erreur lors du lancement de l'envoi vers Odoo");
+    } finally {
+      setSendingToOdoo(false);
+    }
   };
 
   const filteredLeads = tab === "tous" ? leads : leads.filter((l) => l.status === tab);
@@ -491,6 +507,73 @@ export default function CampaignLeadsPage() {
           <Button size="small" onClick={() => setTab("EN_ATTENTE_VALIDATION")} style={{ color: C.amber, borderColor: C.amber }}>
             Voir la file
           </Button>
+        </div>
+      )}
+
+      {/* ── Bannière : revue terminée, prêt pour l'envoi vers Odoo ─── */}
+      {campaign?.status === "en_attente_validation" && counts.EN_ATTENTE_VALIDATION === 0 && counts.VALIDE > 0 && (
+        <div style={{
+          background: C.greenBg, border: `1px solid ${C.green}40`,
+          borderRadius: R.lg, padding: "12px 18px", marginBottom: 16,
+          display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <CheckCircleOutlined style={{ color: C.green, fontSize: 18 }} />
+          <div style={{ flex: 1 }}>
+            <Text style={{ fontWeight: 700, color: C.green, fontSize: 13 }}>
+              {counts.VALIDE} lead{counts.VALIDE > 1 ? "s" : ""} validé{counts.VALIDE > 1 ? "s" : ""} — prêt{counts.VALIDE > 1 ? "s" : ""} pour Odoo
+            </Text>
+            <Text style={{ display: "block", fontSize: 12, color: C.textMuted }}>
+              La revue est terminée. Envoyez les leads validés vers le CRM Odoo.
+            </Text>
+          </div>
+          <Popconfirm
+            title="Envoyer vers Odoo ?"
+            description={`${counts.VALIDE} lead(s) validé(s) seront créés/mis à jour dans Odoo avec leur email de prospection.`}
+            onConfirm={sendToOdoo}
+            okText="Envoyer" cancelText="Annuler"
+          >
+            <Button size="small" type="primary" loading={sendingToOdoo} style={{ background: C.green, borderColor: C.green }}>
+              Envoyer vers Odoo
+            </Button>
+          </Popconfirm>
+        </div>
+      )}
+
+      {/* ── Bannière : synchronisation CRM en cours / terminée / échouée ─ */}
+      {campaign?.status === "crm_pending" && (
+        <div style={{
+          background: C.cyanBg, border: `1px solid ${C.indigo}40`,
+          borderRadius: R.lg, padding: "12px 18px", marginBottom: 16,
+          display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <ReloadOutlined spin style={{ color: C.indigo, fontSize: 18 }} />
+          <Text style={{ fontWeight: 700, color: C.indigo, fontSize: 13 }}>
+            Synchronisation vers Odoo en cours…
+          </Text>
+        </div>
+      )}
+      {campaign?.status === "crm_failed" && (
+        <div style={{
+          background: C.redBg, border: `1px solid ${C.red}40`,
+          borderRadius: R.lg, padding: "12px 18px", marginBottom: 16,
+          display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <CloseCircleOutlined style={{ color: C.red, fontSize: 18 }} />
+          <Text style={{ fontWeight: 700, color: C.red, fontSize: 13 }}>
+            Échec de la synchronisation Odoo — nouvelle tentative automatique en cours.
+          </Text>
+        </div>
+      )}
+      {campaign?.status === "completed" && (
+        <div style={{
+          background: C.greenBg, border: `1px solid ${C.green}40`,
+          borderRadius: R.lg, padding: "12px 18px", marginBottom: 16,
+          display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <CheckCircleOutlined style={{ color: C.green, fontSize: 18 }} />
+          <Text style={{ fontWeight: 700, color: C.green, fontSize: 13 }}>
+            Campagne terminée — tous les leads validés sont synchronisés dans Odoo.
+          </Text>
         </div>
       )}
 
