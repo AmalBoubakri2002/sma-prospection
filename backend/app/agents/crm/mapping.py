@@ -19,16 +19,26 @@ def build_odoo_payload(lead: Lead) -> dict:
 
     payload = {
         "name": lead.company_name,
-        "partner_name": contact_name or None,
+        # partner_name = "Company Name" (la société) ; contact_name = "Contact Name"
+        # (la personne) — deux champs Odoo distincts, à ne pas confondre.
+        "partner_name": lead.company_name,
+        "contact_name": contact_name or None,
+        "function": lead.titre_dirigeant,
         "email_from": lead.email,
         "phone": lead.telephone,
         "website": lead.site_web,
+        "street": lead.adresse,
         "x_sector": lead.secteur,
         "x_score_ia": lead.score,
         "x_label_ia": lead.label_scoring,
         "priority": _LABEL_TO_PRIORITY.get(lead.label_scoring),
         "description": lead.contenu_email,
         "x_sma_pc_id": str(lead.id),
+        "x_siret": lead.siret,
+        "x_taille_entreprise": lead.taille_entreprise,
+        "x_date_creation_entreprise": lead.date_creation.isoformat() if lead.date_creation else None,
+        "x_ca": lead.ca,
+        "x_resultat_net": lead.resultat_net,
     }
     # Odoo n'aime pas recevoir None sur des champs qu'on ne veut pas écraser ;
     # on n'envoie que ce qu'on a réellement (x_sma_pc_id est toujours présent).
