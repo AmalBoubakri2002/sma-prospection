@@ -9,10 +9,12 @@ from app.services import odoo_client
 # atterrir en "New" et forcer un tri manuel côté commercial dans Odoo.
 _QUALIFIED_STAGE_NAME = "Qualified"
 
-# Cache mémoire (durée de vie du process) : le stage_id et les user_id par email
-# changent rarement, pas la peine de refaire un search Odoo à chaque lead.
+# Cache mémoire (durée de vie du process) : le stage_id et les comptes Odoo par
+# email changent rarement, pas la peine de refaire un search Odoo à chaque lead.
 _cached_qualified_stage_id: int | None | bool = None
-_cached_user_ids_by_email: dict[str, int | None] = {}
+# {email: (user_id, partner_id)} — un seul aller-retour Odoo sert à la fois pour
+# le champ user_id (Vendeur) et pour author_id (auteur du message dans le chatter).
+_cached_odoo_user_by_email: dict[str, tuple[int, int]] = {}
 
 
 async def _get_qualified_stage_id() -> int | None:
@@ -25,18 +27,32 @@ async def _get_qualified_stage_id() -> int | None:
     return _cached_qualified_stage_id or None
 
 
-async def _get_user_id_by_email(email: str | None) -> int | None:
-    """Retrouve l'utilisateur Odoo (vendeur) correspondant au commercial SMA-PC par e-mail.
+async def _get_odoo_user(email: str | None) -> tuple[int, int] | None:
+    """Retrouve (user_id, partner_id) du compte Odoo correspondant au commercial
+    SMA-PC par e-mail. user_id sert au champ Vendeur ; partner_id sert d'auteur
+    pour les messages postés dans le chatter (sans ça, tout apparaît posté par
+    le compte technique API, quel que soit le vendeur assigné au lead).
 
     Renvoie None si aucun compte Odoo ne correspond — le lead reste alors assigné
     au compte technique par défaut plutôt que d'échouer la synchronisation.
+
+    Seul un résultat trouvé est mis en cache : contrairement au stage (quasi
+    figé), un compte Odoo peut être créé après coup (ex : onboarding d'un
+    commercial) — il ne faut pas rester bloqué sur un "non trouvé" jusqu'au
+    redémarrage du worker.
     """
     if not email:
         return None
-    if email not in _cached_user_ids_by_email:
-        ids = await odoo_client.execute_kw("res.users", "search", [[["login", "=", email]]])
-        _cached_user_ids_by_email[email] = ids[0] if ids else None
-    return _cached_user_ids_by_email[email]
+    if email in _cached_odoo_user_by_email:
+        return _cached_odoo_user_by_email[email]
+    users = await odoo_client.execute_kw(
+        "res.users", "search_read", [[["login", "=", email]]], {"fields": ["partner_id"]}
+    )
+    if not users or not users[0].get("partner_id"):
+        return None
+    result = (users[0]["id"], users[0]["partner_id"][0])
+    _cached_odoo_user_by_email[email] = result
+    return result
 
 
 async def push_lead_to_odoo(lead: Lead, commercial_email: str | None = None) -> int:
@@ -47,9 +63,9 @@ async def push_lead_to_odoo(lead: Lead, commercial_email: str | None = None) -> 
     if stage_id:
         payload["stage_id"] = stage_id
 
-    user_id = await _get_user_id_by_email(commercial_email)
-    if user_id:
-        payload["user_id"] = user_id
+    odoo_user = await _get_odoo_user(commercial_email)
+    if odoo_user:
+        payload["user_id"] = odoo_user[0]
 
     existing_ids = await odoo_client.execute_kw(
         "crm.lead", "search", [[["x_sma_pc_id", "=", sma_pc_id]]]
@@ -62,12 +78,25 @@ async def push_lead_to_odoo(lead: Lead, commercial_email: str | None = None) -> 
     return await odoo_client.execute_kw("crm.lead", "create", [payload])
 
 
-async def historize_email_in_chatter(odoo_lead_id: int, objet: str, contenu: str) -> None:
-    """Log l'e-mail de prospection envoyé dans le chatter (mail.message) de la fiche Odoo."""
-    body = f"<p><strong>Objet :</strong> {objet}</p>{contenu or ''}"
-    await odoo_client.execute_kw(
-        "crm.lead",
-        "message_post",
-        [[odoo_lead_id]],
-        {"body": body, "subject": objet},
-    )
+async def historize_email_in_chatter(
+    odoo_lead_id: int, objet: str, contenu: str, commercial_email: str | None = None
+) -> None:
+    """Log l'e-mail de prospection envoyé dans le chatter (mail.message) de la fiche Odoo.
+
+    Texte brut, sans balises : le body de message_post envoyé via l'API externe
+    est échappé par Odoo avant affichage (le HTML construit à la main s'affichait
+    donc tel quel, balises comprises) — même limite que si on postait du HTML
+    depuis n'importe quel client JSON-RPC tiers. Le champ description (voir
+    mapping.py) est écrit directement sur la fiche, pas via message_post, et
+    n'a pas ce problème : on aligne le chatter sur la même approche texte brut.
+
+    author_id (si le commercial a un compte Odoo) attribue le message au vendeur
+    plutôt qu'au compte technique API qui exécute réellement l'appel."""
+    body = f"Objet : {objet}\n\n{contenu or ''}"
+    kwargs = {"body": body, "subject": objet}
+
+    odoo_user = await _get_odoo_user(commercial_email)
+    if odoo_user:
+        kwargs["author_id"] = odoo_user[1]
+
+    await odoo_client.execute_kw("crm.lead", "message_post", [[odoo_lead_id]], kwargs)

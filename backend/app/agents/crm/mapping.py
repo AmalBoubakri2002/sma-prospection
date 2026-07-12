@@ -32,6 +32,14 @@ def build_odoo_payload(lead: Lead) -> dict:
         "x_score_ia": lead.score,
         "x_label_ia": lead.label_scoring,
         "priority": _LABEL_TO_PRIORITY.get(lead.label_scoring),
+        # Champ natif Odoo (utilisé par le Kanban pondéré et les prévisions de
+        # pipeline) — sans ça le score IA restait cantonné au champ custom x_score_ia,
+        # invisible pour les rapports natifs Odoo.
+        # NB : pas de expected_revenue ici — le CA du prospect (lead.ca) n'a aucun
+        # rapport avec la valeur attendue du contrat SMA-PC ; on n'a pas de signal
+        # réel pour ce champ, mieux vaut le laisser vide que de le remplir avec un
+        # chiffre trompeur. À saisir manuellement par le commercial dans Odoo.
+        "probability": round(lead.score * 100, 1) if lead.score is not None else None,
         "description": lead.contenu_email,
         "x_sma_pc_id": str(lead.id),
         "x_siret": lead.siret,

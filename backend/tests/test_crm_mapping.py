@@ -55,6 +55,11 @@ def test_build_odoo_payload_maps_core_fields():
     assert payload["x_date_creation_entreprise"] == "2012-06-15"
     assert payload["x_ca"] == 750_000
     assert payload["x_resultat_net"] == 85_000
+    # Champ natif Odoo dérivé du scoring, pour que le Kanban pondéré et les
+    # prévisions natives d'Odoo reflètent le score IA sans dépendre de x_score_ia.
+    assert payload["probability"] == 87.0
+    # Pas de expected_revenue : le CA du prospect n'est pas la valeur du contrat.
+    assert "expected_revenue" not in payload
 
 
 def test_build_odoo_payload_priority_covers_all_labels():

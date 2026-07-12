@@ -15,7 +15,7 @@ async def run_crm(db: AsyncSession, campaign: Campaign) -> dict:
     failed_this_run: set = set()
 
     # Récupéré une seule fois par campagne (pas par lead) : sert à retrouver le
-    # vendeur Odoo correspondant, voir sync.py::_get_user_id_by_email.
+    # vendeur Odoo correspondant, voir sync.py::_get_odoo_user.
     commercial = await db.get(User, campaign.commercial_id)
     commercial_email = commercial.email if commercial else None
 
@@ -30,7 +30,9 @@ async def run_crm(db: AsyncSession, campaign: Campaign) -> dict:
         for lead in leads:
             try:
                 odoo_lead_id = await push_lead_to_odoo(lead, commercial_email)
-                await historize_email_in_chatter(odoo_lead_id, lead.objet_email, lead.contenu_email)
+                await historize_email_in_chatter(
+                    odoo_lead_id, lead.objet_email, lead.contenu_email, commercial_email
+                )
                 await mark_crm_sync_success(db, lead.id, odoo_lead_id)
                 await update_lead_synced_crm(db, lead)
                 total_synced += 1
