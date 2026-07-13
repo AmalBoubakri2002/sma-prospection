@@ -12,6 +12,9 @@ class NotificationType:
     ACCOUNT_APPROVED = "ACCOUNT_APPROVED"
     ACCOUNT_REJECTED = "ACCOUNT_REJECTED"
     EMAILS_PRETS = "EMAILS_PRETS"
+    # Boucle retour CRM (webhooks Odoo)
+    LEAD_REPONDU = "LEAD_REPONDU"
+    LEAD_SANS_REPONSE = "LEAD_SANS_REPONSE"
 
 
 class Notification(Base):

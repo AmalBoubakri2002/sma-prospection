@@ -34,6 +34,30 @@ Si le worker redémarre pendant la pause HITL, la reprise bascule automatiquemen
 sur une tâche CRM manuelle plutôt que d'échouer, car les leads validés sont déjà
 en base à ce stade.
 
+### Boucle retour CRM (webhooks Odoo → backend)
+
+Le module Odoo `sma_pc_crm` renvoie les événements CRM vers le backend
+(`POST /api/v1/webhooks/odoo`), qui met à jour le statut du lead local et
+notifie le commercial :
+
+| Événement Odoo | Déclencheur | Statut lead SMA-PC |
+|---|---|---|
+| `lead.won` | Opportunité passée dans une étape gagnée | `REPONDU` |
+| `lead.lost` | Lead marqué perdu (archivé) | `SANS_REPONSE` |
+| `message.received` | Réponse email du prospect (passerelle mail) | `REPONDU` |
+
+Chaque événement reçu est journalisé dans la table `webhook_events` avec son
+résultat de traitement (audit). L'endpoint est authentifié par secret partagé :
+
+1. générer un secret : `openssl rand -hex 32` ;
+2. le renseigner dans `backend/.env` → `ODOO_WEBHOOK_SECRET=...` ;
+3. dans Odoo : *Paramètres > Technique > Paramètres système* →
+   `sma_pc.webhook_secret` = la même valeur (l'URL `sma_pc.webhook_url` est
+   préconfigurée pour le réseau Docker : `http://backend:8000/api/v1/webhooks/odoo`) ;
+4. mettre à jour le module : Apps → *SMA-PC ProspectAI — Intégration CRM* → Upgrade.
+
+Sans secret configuré côté backend, l'endpoint répond 503 (fermé par défaut).
+
 ## État du projet
 
 ### Implémenté
@@ -45,6 +69,7 @@ en base à ce stade.
 - Création et suivi de campagnes (UI + file de validation des leads/emails)
 - Pipeline complet Veille → Enrichissement → Scoring → Rédaction → CRM (LangGraph)
 - Intégration CRM Odoo 17 (stage, vendeur, historique)
+- Boucle retour CRM : webhooks Odoo (gagné / perdu / réponse email) → statuts `REPONDU` / `SANS_REPONSE` + notification du commercial
 - Orchestrateur de reprise automatique des tâches en échec
 
 ### À venir

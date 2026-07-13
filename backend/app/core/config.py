@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     ODOO_DB: str = "odoo"
     ODOO_USERNAME: str = ""
     ODOO_PASSWORD: str = ""
+    ODOO_WEBHOOK_SECRET: str = ""
 
 
 settings = Settings()

@@ -81,6 +81,36 @@ async def notify_emails_prets(
     )
 
 
+async def notify_retour_crm(
+    db: AsyncSession, commercial_id: uuid.UUID, company_name: str, event: str
+) -> None:
+    """Notifie le commercial d'un retour CRM Odoo (webhook) sur un de ses leads."""
+    if event == "lead.lost":
+        await create_notification(
+            db,
+            recipient_id=commercial_id,
+            type=NotificationType.LEAD_SANS_REPONSE,
+            title="Prospect perdu dans Odoo",
+            message=f"{company_name} : opportunité marquée perdue — statut passé à SANS_REPONSE.",
+        )
+    elif event == "lead.won":
+        await create_notification(
+            db,
+            recipient_id=commercial_id,
+            type=NotificationType.LEAD_REPONDU,
+            title="Prospect converti dans Odoo",
+            message=f"{company_name} : opportunité gagnée — statut passé à REPONDU.",
+        )
+    else:  # message.received
+        await create_notification(
+            db,
+            recipient_id=commercial_id,
+            type=NotificationType.LEAD_REPONDU,
+            title="Réponse reçue",
+            message=f"{company_name} a répondu à votre email — statut passé à REPONDU.",
+        )
+
+
 async def list_notifications(db: AsyncSession, recipient_id: uuid.UUID) -> list[Notification]:
     result = await db.execute(
         select(Notification)
