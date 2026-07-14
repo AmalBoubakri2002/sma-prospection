@@ -1,10 +1,6 @@
-"""Spécification unique des features du modèle de scoring — source de vérité partagée
-par l'entraînement (ml/train_scoring_model.py) et l'inférence (feature_builder.py),
-pour éviter une désynchronisation silencieuse qui fausserait les prédictions."""
+"""Spécification unique des features du modèle de scoring — source de vérité partagée par l'entraînement (ml/train_scoring_model.py) et l'inférence (feature_builder.py), pour éviter une désynchronisation silencieuse qui fausserait les prédictions."""
 
 import math
-
-# ── Encodages ordinaux ─────────────────────────────────────────────────────────
 
 TAILLE_TO_CODE: dict[str, int] = {
     "NN": 0, "01": 0, "02": 0, "03": 0,   # TPE / micro

@@ -1,5 +1,4 @@
 """Pipeline LangGraph : Veille → Enrichissement → Scoring → Rédaction → [HITL] → CRM.
-
 MemorySaver garde l'état en mémoire du process — à remplacer par AsyncPostgresSaver
 en production pour survivre à un redémarrage pendant la pause HITL.
 """

@@ -1,5 +1,4 @@
-"""Agent Rédaction — génère un email de prospection par lead QUALIFIE via l'API NVIDIA,
-puis passe le lead en EN_ATTENTE_VALIDATION."""
+#Agent Rédaction — génère un email de prospection par lead QUALIFIE via l'API NVIDIA,puis passe le lead en EN_ATTENTE_VALIDATION.
 
 import asyncio
 import json

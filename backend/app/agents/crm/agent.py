@@ -14,8 +14,7 @@ async def run_crm(db: AsyncSession, campaign: Campaign) -> dict:
     total_errors = 0
     failed_this_run: set = set()
 
-    # Récupéré une seule fois par campagne (pas par lead) : sert à retrouver le
-    # vendeur Odoo correspondant, voir sync.py::_get_odoo_user.
+    # Récupéré une seule fois par campagne (pas par lead) : sert à retrouver le vendeur Odoo correspondant.
     commercial = await db.get(User, campaign.commercial_id)
     commercial_email = commercial.email if commercial else None
 

@@ -1,8 +1,4 @@
-"""Agent Scoring — étape 3 du pipeline SMA-PC ProspectAI.
-
-Lit les leads en statut ENRICHI, calcule le score XGBoost pour chacun,
-et écrit le résultat dans lead.score + lead.label_scoring.
-"""
+# Agent Scoring — Lit les leads en statut ENRICHI, calcule le score XGBoost pour chacun,et écrit le résultat dans lead.score + lead.label_scoring.
 
 import logging
 

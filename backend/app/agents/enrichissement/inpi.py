@@ -9,6 +9,7 @@ Authentification : login (INPI_USERNAME / INPI_PASSWORD dans backend/.env) contr
 le SSO du registre national, qui renvoie un token Bearer temporaire.
 """
 
+
 import asyncio
 
 import httpx

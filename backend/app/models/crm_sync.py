@@ -14,10 +14,7 @@ class CRMSyncStatus:
 
 
 class CRMSync(Base):
-    """État technique de la synchronisation d'un Lead vers Odoo — séparé du cycle
-    de vie métier du lead (Lead.status) pour permettre un retry indépendant en cas
-    d'échec Odoo, sans perturber le statut du lead lui-même."""
-
+   
     __tablename__ = "crm_syncs"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)

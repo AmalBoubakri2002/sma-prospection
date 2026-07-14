@@ -1,10 +1,4 @@
-"""Charge le modèle XGBoost (joblib) et expose predict() pour un Lead unique.
-
-ATTENTION : score/label reflètent une règle de qualification, pas une probabilité de
-conversion réelle — le modèle est entraîné sur un label dérivé des mêmes champs
-financiers utilisés comme features, sans signal de conversion indépendant
-(détails : ml/train_scoring_model.py, ml/dataset_pipeline.py).
-"""
+# Charge le modèle XGBoost (joblib) et expose predict() pour un Lead unique.
 
 import json
 import logging

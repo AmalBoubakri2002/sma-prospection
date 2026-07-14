@@ -1,12 +1,4 @@
-"""Fallback email scraper pour les sites à rendu JavaScript (SPA, React, Vue…).
-
-Requiert :
-  pip install playwright
-  playwright install chromium   (télécharge ~120 Mo de binaire)
-
-Si Playwright n'est pas installé, la fonction retourne None sans erreur.
-N'est appelé que lorsque le scraper httpx standard échoue.
-"""
+# Fallback email scraper pour les sites à rendu JavaScript (SPA, React, Vue…). N'est appelé que lorsque le scraper httpx standard échoue.
 
 import logging
 

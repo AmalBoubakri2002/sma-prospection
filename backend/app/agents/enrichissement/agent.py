@@ -1,5 +1,4 @@
-"""Agent Enrichissement : recherche-entreprises.api.gouv.fr + INPI/BODACC (fallback finances,
-procédures) + DuckDuckGo (site web) + scraping homepage/Playwright (email, téléphone) + Nominatim."""
+#Agent Enrichissement : recherche-entreprises.api.gouv.fr + INPI/BODACC (fallback finances,procédures) + DuckDuckGo (site web) + scraping homepage/Playwright (email, téléphone) + Nominatim.
 
 import asyncio
 import logging

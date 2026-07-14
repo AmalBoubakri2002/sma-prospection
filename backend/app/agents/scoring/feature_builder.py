@@ -1,4 +1,4 @@
-"""Construit le vecteur de features XGBoost depuis un objet Lead ORM."""
+# Construit le vecteur de features XGBoost depuis un objet Lead ORM.
 
 import math
 from datetime import date
