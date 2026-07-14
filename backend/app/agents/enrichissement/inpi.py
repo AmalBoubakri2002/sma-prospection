@@ -1,9 +1,16 @@
 """Client pour l'API RNE INPI — comptes annuels par SIREN.
 
-Non fonctionnel en pratique : l'endpoint JSON ciblé est bloqué par Cloudflare ;
-le seul accès réel (API RNE) renvoie un PDF de bilan, dont le parsing n'est pas
-implémenté. get_finances_from_siren lève donc toujours InpiError — géré par
-l'appelant (agent.py), qui continue sans CA plutôt que d'échouer l'enrichissement.
+Utilise /api/companies/{siren}/attachments (registre-national-entreprises.inpi.fr),
+qui renvoie directement les bilans saisis (bilansSaisis[].bilanSaisi.bilan.detail.pages),
+et non /entreprises/{siren}/comptes sur data.inpi.fr : cet ancien endpoint est bloqué par
+Cloudflare (403 "Just a moment...") quel que soit le token, alors que le domaine
+registre-national-entreprises.inpi.fr (déjà utilisé pour le login SSO) répond normalement.
+
+Seuls les types de bilan "C" (complet) et "S" (simplifié) sont interprétés — ils couvrent
+l'écrasante majorité des PME/TPE ciblées en prospection. Les autres types (K=consolidé,
+B=banque, assurance, agricole) ont une nomenclature de codes différente et ne sont pas
+traités : get_finances_from_siren renvoie alors {} pour ce SIREN plutôt qu'une valeur
+incorrecte, exactement comme lorsque le bilan n'est pas saisi ou est confidentiel.
 
 Authentification : login (INPI_USERNAME / INPI_PASSWORD dans backend/.env) contre
 le SSO du registre national, qui renvoie un token Bearer temporaire.
@@ -16,8 +23,8 @@ import httpx
 
 from app.core.config import settings
 
-BASE_URL = "https://data.inpi.fr"
-SSO_LOGIN_URL = "https://registre-national-entreprises.inpi.fr/api/sso/login"
+BASE_URL = "https://registre-national-entreprises.inpi.fr/api"
+SSO_LOGIN_URL = f"{BASE_URL}/sso/login"
 REQUEST_DELAY_SECONDS = 0.3
 
 
@@ -66,7 +73,7 @@ async def _login(client: httpx.AsyncClient) -> str:
 
 async def get_finances_from_siren(siren: str) -> dict:
     """Retourne {'ca': int|None, 'resultat_net': int|None, 'ca_n1': int|None} pour un SIREN."""
-    url = f"{BASE_URL}/entreprises/{siren}/comptes"
+    url = f"{BASE_URL}/companies/{siren}/attachments"
 
     async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
         token = await _login(client)
@@ -86,51 +93,91 @@ async def get_finances_from_siren(siren: str) -> dict:
     if response.status_code != 200:
         raise InpiError(f"INPI ({response.status_code}) : {response.text[:200]}")
 
-    data = response.json()
-    return _extract_latest_finances(data)
+    bilans_saisis = response.json().get("bilansSaisis", [])
+    return _extract_latest_finances(bilans_saisis)
 
 
-def _extract_latest_finances(data: list | dict) -> dict:
-    """Extrait le CA et résultat net du bilan le plus récent."""
-    if not data:
-        return {}
+# Types de bilan interprétés — voir docstring du module.
+_SUPPORTED_TYPES = frozenset({"C", "S"})
 
-    # L'API renvoie une liste de bilans par exercice
-    bilans: list[dict] = data if isinstance(data, list) else data.get("bilans", [])
-    if not bilans:
-        return {}
+# CA "complet" (type C) : poste "Chiffres d'affaires nets", page 03, colonnes
+# 3=Total année N / 4=Total année N-1.
+_CA_COMPLET_CODE = "FJ"
 
-    # Tri par date de clôture décroissante — on prend le plus récent
-    def sort_key(b: dict) -> str:
-        return b.get("dateCloture") or b.get("date_cloture") or ""
+# CA "simplifié" (type S) : pas de poste unique, on additionne ventes + production vendue
+# (France + export), page 02, colonnes 1=année N / 2=année N-1 (export : colonne 1 seulement).
+_CA_SIMPLIFIE_CODES = ("209", "210", "214", "215", "217", "218")
 
-    bilans_sorted = sorted(bilans, key=sort_key, reverse=True)
-    latest = bilans_sorted[0]
-
-    def _first(bilan: dict, *keys: str) -> object:
-        for k in keys:
-            v = bilan.get(k)
-            if v is not None:
-                return v
-        return None
-
-    ca = _to_int(_first(latest, "chiffreAffaires", "chiffre_affaires", "ca"))
-    resultat = _to_int(_first(latest, "resultatNet", "resultat_net", "resultat"))
-
-    # CA année N-1 pour calculer l'évolution dans l'Agent Scoring
-    prev = bilans_sorted[1] if len(bilans_sorted) >= 2 else None
-    ca_n1 = _to_int(_first(prev, "chiffreAffaires", "chiffre_affaires", "ca")) if prev else None
-
-    return {"ca": ca, "resultat_net": resultat, "ca_n1": ca_n1}
+# Résultat de l'exercice : "DI" (passif, page 02) pour le complet, "310" (compte de
+# résultat, page 02) pour le simplifié — les deux valent "bénéfice ou perte", vérifié
+# par recoupement avec les postes HN (complet) / 136 (simplifié) sur des cas réels.
+_RESULTAT_CODE = {"C": "DI", "S": "310"}
 
 
-def _to_int(value: object) -> int | None:
-    if value is None:
+def _parse_amount(raw: str | None) -> int | None:
+    if not raw:
         return None
     try:
-        return int(float(str(value)))
-    except (ValueError, TypeError):
+        return int(raw)
+    except ValueError:
         return None
+
+
+def _liasse_codes(bilan: dict) -> dict[str, dict]:
+    """Aplatit les pages d'un bilan-saisi en {code_liasse: {"m1": ..., "m2": ...}}."""
+    pages = bilan.get("detail", {}).get("pages", [])
+    codes: dict[str, dict] = {}
+    for page in pages:
+        for liasse in page.get("liasses", []):
+            code = liasse.get("code")
+            if code:
+                codes[code] = liasse
+    return codes
+
+
+def _extract_ca(codes: dict[str, dict], type_bilan: str) -> tuple[int | None, int | None]:
+    if type_bilan == "C":
+        fj = codes.get(_CA_COMPLET_CODE, {})
+        return _parse_amount(fj.get("m3")), _parse_amount(fj.get("m4"))
+
+    # type "S" : somme des postes de vente (France + export)
+    found = False
+    ca = ca_n1 = 0
+    for code in _CA_SIMPLIFIE_CODES:
+        liasse = codes.get(code)
+        if liasse is None:
+            continue
+        found = True
+        ca += _parse_amount(liasse.get("m1")) or 0
+        ca_n1 += _parse_amount(liasse.get("m2")) or 0
+    return (ca if found else None), (ca_n1 if found else None)
+
+
+def _extract_resultat(codes: dict[str, dict], type_bilan: str) -> tuple[int | None, int | None]:
+    liasse = codes.get(_RESULTAT_CODE[type_bilan], {})
+    return _parse_amount(liasse.get("m1")), _parse_amount(liasse.get("m2"))
+
+
+def _extract_latest_finances(bilans_saisis: list[dict]) -> dict:
+    """Sélectionne le bilan-saisis le plus récent parmi les types supportés et en
+    extrait CA / résultat net. Renvoie {} si aucun bilan exploitable (type non
+    supporté, comptes confidentiels, ou pas encore saisis par l'INPI)."""
+    candidats = [
+        b for b in bilans_saisis
+        if b.get("typeBilan") in _SUPPORTED_TYPES and b.get("bilanSaisi")
+    ]
+    if not candidats:
+        return {}
+
+    candidats.sort(key=lambda b: b.get("dateCloture") or "", reverse=True)
+    latest = candidats[0]
+    type_bilan = latest["typeBilan"]
+    codes = _liasse_codes(latest["bilanSaisi"]["bilan"])
+
+    ca, ca_n1 = _extract_ca(codes, type_bilan)
+    resultat_net, _ = _extract_resultat(codes, type_bilan)
+
+    return {"ca": ca, "resultat_net": resultat_net, "ca_n1": ca_n1}
 
 
 async def _get_with_retry(

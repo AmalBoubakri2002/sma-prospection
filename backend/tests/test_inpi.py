@@ -3,105 +3,204 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.agents.enrichissement import inpi
-from app.agents.enrichissement.inpi import InpiAuthError, _extract_latest_finances, _login, _to_int
+from app.agents.enrichissement.inpi import (
+    InpiAuthError,
+    _extract_ca,
+    _extract_latest_finances,
+    _extract_resultat,
+    _liasse_codes,
+    _login,
+    _parse_amount,
+)
 
 
-def test_extract_latest_finances_nominal():
-    bilans = [
-        {"dateCloture": "2022-12-31", "chiffreAffaires": 1000000, "resultatNet": 50000},
-        {"dateCloture": "2023-12-31", "chiffreAffaires": 1500000, "resultatNet": 80000},
-    ]
-    result = _extract_latest_finances(bilans)
-    assert result["ca"] == 1500000
-    assert result["resultat_net"] == 80000
-    # ca_n1 = CA de l'année N-1 (2022)
-    assert result["ca_n1"] == 1000000
+def _bilan_saisi(type_bilan: str, date_cloture: str, pages: list[dict]) -> dict:
+    """Construit un item `bilansSaisis[]` tel que renvoyé par
+    /api/companies/{siren}/attachments."""
+    return {
+        "dateCloture": date_cloture,
+        "typeBilan": type_bilan,
+        "bilanSaisi": {"bilan": {"detail": {"pages": pages}}},
+    }
 
+
+def _liasse(code: str, **montants: str) -> dict:
+    return {"code": code, **montants}
+
+
+# ── _parse_amount ──────────────────────────────────────────────────────────────
+
+def test_parse_amount_nominal():
+    assert _parse_amount("000000000001220") == 1220
+
+
+def test_parse_amount_negative():
+    assert _parse_amount("-000000001127414") == -1127414
+
+
+def test_parse_amount_none_or_empty():
+    assert _parse_amount(None) is None
+    assert _parse_amount("") is None
+
+
+def test_parse_amount_zero():
+    assert _parse_amount("000000000000000") == 0
+
+
+# ── _liasse_codes ──────────────────────────────────────────────────────────────
+
+def test_liasse_codes_flattens_pages():
+    bilan = {
+        "detail": {
+            "pages": [
+                {"numero": 2, "liasses": [_liasse("DI", m1="100", m2="80")]},
+                {"numero": 3, "liasses": [_liasse("FJ", m3="500", m4="400")]},
+            ]
+        }
+    }
+    codes = _liasse_codes(bilan)
+    assert codes["DI"]["m1"] == "100"
+    assert codes["FJ"]["m3"] == "500"
+
+
+# ── _extract_ca / _extract_resultat — type "C" (complet) ──────────────────────
+
+def test_extract_ca_type_c():
+    codes = {"FJ": _liasse("FJ", m3="000000000699000", m4="000000000890000")}
+    ca, ca_n1 = _extract_ca(codes, "C")
+    assert ca == 699000
+    assert ca_n1 == 890000
+
+
+def test_extract_resultat_type_c():
+    codes = {"DI": _liasse("DI", m1="000000001353000", m2="000000002280000")}
+    resultat, resultat_n1 = _extract_resultat(codes, "C")
+    assert resultat == 1353000
+    assert resultat_n1 == 2280000
+
+
+def test_extract_ca_type_c_missing_code_returns_none():
+    """Compte de résultat déclaré confidentiel (codeConfidentialite=2) : la page 03
+    n'est pas rediffusée, FJ est absent."""
+    assert _extract_ca({}, "C") == (None, None)
+
+
+# ── _extract_ca / _extract_resultat — type "S" (simplifié) ────────────────────
+
+def test_extract_ca_type_s_sums_codes():
+    codes = {"210": _liasse("210", m1="000000001030000", m2="000000000890000")}
+    ca, ca_n1 = _extract_ca(codes, "S")
+    assert ca == 1030000
+    assert ca_n1 == 890000
+
+
+def test_extract_ca_type_s_sums_multiple_codes():
+    codes = {
+        "210": _liasse("210", m1="000000000500000", m2="000000000400000"),
+        "214": _liasse("214", m1="000000000200000", m2="000000000100000"),
+    }
+    ca, ca_n1 = _extract_ca(codes, "S")
+    assert ca == 700000
+    assert ca_n1 == 500000
+
+
+def test_extract_ca_type_s_no_codes_returns_none():
+    assert _extract_ca({}, "S") == (None, None)
+
+
+def test_extract_resultat_type_s():
+    codes = {"310": _liasse("310", m1="000000000592000", m2="000000002280000")}
+    resultat, resultat_n1 = _extract_resultat(codes, "S")
+    assert resultat == 592000
+    assert resultat_n1 == 2280000
+
+
+# ── _extract_latest_finances ───────────────────────────────────────────────────
 
 def test_extract_latest_finances_empty():
     assert _extract_latest_finances([]) == {}
-    assert _extract_latest_finances({}) == {}
 
 
-def test_extract_latest_finances_missing_ca():
-    bilans = [{"dateCloture": "2023-12-31", "resultatNet": 10000}]
-    result = _extract_latest_finances(bilans)
-    assert result["ca"] is None
-    assert result["resultat_net"] == 10000
-    assert result["ca_n1"] is None  # pas de bilan N-1
+def test_extract_latest_finances_type_c_nominal():
+    bilans_saisis = [
+        _bilan_saisi("C", "2023-12-31", [
+            {"numero": 2, "liasses": [_liasse("DI", m1="000000001353000", m2="000000002280000")]},
+            {"numero": 3, "liasses": [_liasse("FJ", m3="000000000699000", m4="000000000890000")]},
+        ])
+    ]
+    result = _extract_latest_finances(bilans_saisis)
+    assert result == {"ca": 699000, "resultat_net": 1353000, "ca_n1": 890000}
 
 
-def test_to_int_nominal():
-    assert _to_int(1500000) == 1500000
-    assert _to_int("2500000") == 2500000
-    assert _to_int(1500000.0) == 1500000
-
-
-def test_to_int_none():
-    assert _to_int(None) is None
-    assert _to_int("") is None
-
-
-# ── cas supplémentaires ───────────────────────────────────────────────────────
-
-def test_extract_latest_finances_snake_case_fields():
-    """L'API INPI peut retourner des champs en snake_case."""
-    bilans = [{"date_cloture": "2023-12-31", "chiffre_affaires": 900000, "resultat_net": 30000}]
-    result = _extract_latest_finances(bilans)
-    assert result["ca"] == 900000
-    assert result["resultat_net"] == 30000
-    assert result["ca_n1"] is None
-
-
-def test_extract_latest_finances_dict_with_bilans_key():
-    """L'API peut retourner un dict {'bilans': [...]} plutôt qu'une liste directe."""
-    data = {
-        "bilans": [
-            {"dateCloture": "2023-06-30", "chiffreAffaires": 750000, "resultatNet": 12000}
-        ]
-    }
-    result = _extract_latest_finances(data)
-    assert result["ca"] == 750000
-    assert result["resultat_net"] == 12000
-
-
-def test_extract_latest_finances_zero_ca():
-    """Un CA égal à zéro (entreprise sans chiffre d'affaires) ne doit pas être ignoré."""
-    bilans = [{"dateCloture": "2023-12-31", "chiffreAffaires": 0, "resultatNet": -5000}]
-    result = _extract_latest_finances(bilans)
-    # Un CA de 0 est une valeur valide, pas une absence de données
-    assert result["ca"] == 0
-    assert result["resultat_net"] == -5000
+def test_extract_latest_finances_type_s_nominal():
+    bilans_saisis = [
+        _bilan_saisi("S", "2024-12-31", [
+            {"numero": 2, "liasses": [
+                _liasse("210", m1="000000001030000", m2="000000000890000"),
+                _liasse("310", m1="000000000592000", m2="000000002280000"),
+            ]},
+        ])
+    ]
+    result = _extract_latest_finances(bilans_saisis)
+    assert result == {"ca": 1030000, "resultat_net": 592000, "ca_n1": 890000}
 
 
 def test_extract_latest_finances_picks_most_recent_by_date():
-    bilans = [
-        {"dateCloture": "2021-12-31", "chiffreAffaires": 500000, "resultatNet": 5000},
-        {"dateCloture": "2023-12-31", "chiffreAffaires": 900000, "resultatNet": 25000},
-        {"dateCloture": "2022-12-31", "chiffreAffaires": 700000, "resultatNet": 15000},
+    older = _bilan_saisi("C", "2022-12-31", [
+        {"numero": 2, "liasses": [_liasse("DI", m1="000000000100000")]},
+        {"numero": 3, "liasses": [_liasse("FJ", m3="000000000500000")]},
+    ])
+    newer = _bilan_saisi("S", "2024-12-31", [
+        {"numero": 2, "liasses": [
+            _liasse("210", m1="000000000900000"),
+            _liasse("310", m1="000000000250000"),
+        ]},
+    ])
+    result = _extract_latest_finances([older, newer])
+    assert result["ca"] == 900000
+    assert result["resultat_net"] == 250000
+
+
+def test_extract_latest_finances_ignores_unsupported_type():
+    """Type 'K' (consolidé) a une nomenclature de codes différente — non interprété."""
+    bilans_saisis = [
+        _bilan_saisi("K", "2025-12-31", [
+            {"numero": 3, "liasses": [_liasse("FJ", m3="000027376000000")]},
+        ])
     ]
-    result = _extract_latest_finances(bilans)
-    assert result["ca"] == 900000     # 2023 est le plus récent
-    assert result["ca_n1"] == 700000  # 2022 est N-1
+    assert _extract_latest_finances(bilans_saisis) == {}
 
 
-def test_extract_latest_finances_single_bilan_no_ca_n1():
-    """Un seul bilan disponible → ca_n1 est None."""
-    bilans = [{"dateCloture": "2023-12-31", "chiffreAffaires": 500000, "resultatNet": 20000}]
-    result = _extract_latest_finances(bilans)
-    assert result["ca"] == 500000
-    assert result["ca_n1"] is None
+def test_extract_latest_finances_ignores_entries_without_bilan_saisi():
+    """Bilan confidentiel en intégralité (codeConfidentialite=1) : bilanSaisi absent."""
+    bilans_saisis = [
+        {"dateCloture": "2023-12-31", "typeBilan": "C", "bilanSaisi": None},
+    ]
+    assert _extract_latest_finances(bilans_saisis) == {}
 
 
-def test_to_int_zero():
-    assert _to_int(0) == 0
-    assert _to_int("0") == 0
-    assert _to_int(0.0) == 0
+def test_extract_latest_finances_partial_confidentiality_keeps_resultat():
+    """codeConfidentialite=2 : compte de résultat (pages 03/04) masqué, mais le
+    passif (page 02, DI) reste rediffusé — CA absent, résultat net disponible."""
+    bilans_saisis = [
+        _bilan_saisi("C", "2019-12-31", [
+            {"numero": 2, "liasses": [_liasse("DI", m1="000000000549605", m2="000000000648817")]},
+        ])
+    ]
+    result = _extract_latest_finances(bilans_saisis)
+    assert result == {"ca": None, "resultat_net": 549605, "ca_n1": None}
 
 
-def test_to_int_negative():
-    assert _to_int(-50000) == -50000
-    assert _to_int("-50000.5") == -50000
+def test_extract_latest_finances_zero_ca_is_not_ignored():
+    bilans_saisis = [
+        _bilan_saisi("C", "2023-12-31", [
+            {"numero": 2, "liasses": [_liasse("DI", m1="-000000000005000")]},
+            {"numero": 3, "liasses": [_liasse("FJ", m3="000000000000000")]},
+        ])
+    ]
+    result = _extract_latest_finances(bilans_saisis)
+    assert result["ca"] == 0
+    assert result["resultat_net"] == -5000
 
 
 # ── login (auth par identifiants, pas de clé API statique) ─────────────────────
