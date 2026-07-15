@@ -28,7 +28,7 @@ Veille → Enrichissement → Check quota → Scoring → Rédaction → [valida
 - **Enrichissement** — BODACC, INPI, recherche d'entreprises, scraping email/téléphone, géocodage
 - **Scoring** — régression XGBoost sur les leads, label (`HORS_CIBLE`/`FROID`/`TIEDE`/`CHAUD`)
 - **Rédaction** — génération d'emails personnalisés (API NVIDIA), avec file de validation humaine (HITL) avant envoi
-- **CRM** — synchronisation des leads validés vers Odoo (stage, vendeur assigné, historique email dans le chatter)
+- **CRM** — synchronisation des leads validés vers Odoo (stage, vendeur assigné, historique email dans le chatter), puis **envoi effectif de l'email de prospection** via le module mail d'Odoo (lead → `CONTACTE`). En dev, les emails sont capturés par **Mailpit** (`http://localhost:8025`) — aucun prospect réel n'est contacté. Désactivable via `ODOO_SEND_EMAILS=false`.
 
 Si le worker redémarre pendant la pause HITL, la reprise bascule automatiquement
 sur une tâche CRM manuelle plutôt que d'échouer, car les leads validés sont déjà
@@ -98,8 +98,9 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Démarre PostgreSQL (app), PostgreSQL + Odoo 17 (CRM), le worker pipeline et
-l'orchestrateur. Odoo : `http://localhost:8069`.
+Démarre PostgreSQL (app), PostgreSQL + Odoo 17 (CRM), Mailpit (boîte email de
+démo), le worker pipeline et l'orchestrateur. Odoo : `http://localhost:8069` ·
+Mailpit : `http://localhost:8025`.
 
 ### 3. Backend
 

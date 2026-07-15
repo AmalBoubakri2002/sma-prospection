@@ -115,6 +115,16 @@ services:
       retries: 10
       start_period: 30s
 
+  # Faux serveur SMTP de dev : capture tous les emails sortants d'Odoo dans une
+  # boîte de démo (UI web sur http://localhost:8025) — aucun email réel ne part.
+  mailpit:
+    image: axllent/mailpit
+    container_name: sma_mailpit
+    restart: unless-stopped
+    ports:
+      - "8025:8025"   # interface web (boîte de réception de démo)
+      - "1025:1025"   # SMTP — cible du serveur sortant configuré dans Odoo
+
 volumes:
   postgres_data:
   odoo_db_data:

@@ -79,6 +79,12 @@ class Settings(BaseSettings):
     ODOO_USERNAME: str = ""
     ODOO_PASSWORD: str = ""
     ODOO_WEBHOOK_SECRET: str = ""
+    # Envoi effectif de l'email de prospection via le module mail d'Odoo après
+    # la synchronisation d'un lead validé (statut CONTACTE). En dev, l'email
+    # part vers Mailpit (http://localhost:8025) — aucun prospect réel contacté.
+    ODOO_SEND_EMAILS: bool = True
+    # Expéditeur de repli si le commercial n'a pas d'adresse email exploitable.
+    ODOO_EMAIL_FROM_DEFAULT: str = "prospection@sma-prospectai.fr"
 
 
 settings = Settings()

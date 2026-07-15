@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <data noupdate="1">
+    
+        <record id="mail_server_mailpit" model="ir.mail_server">
+            <field name="name">Mailpit (dev — capture des emails sortants)</field>
+            <field name="smtp_host">mailpit</field>
+            <field name="smtp_port">1025</field>
+            <field name="smtp_encryption">none</field>
+            <field name="sequence">10</field>
+        </record>
+
+    </data>
+</odoo>

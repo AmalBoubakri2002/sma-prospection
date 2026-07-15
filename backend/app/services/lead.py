@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.campaign import Campaign
@@ -24,6 +24,46 @@ async def count_leads_by_status_for_campaign(
 async def get_existing_sirets(db: AsyncSession, campaign_id: uuid.UUID) -> set[str]:
     result = await db.execute(select(Lead.siret).where(Lead.campaign_id == campaign_id))
     return set(result.scalars().all())
+
+
+async def get_sirets_prospected_elsewhere(
+    db: AsyncSession, exclude_campaign_id: uuid.UUID
+) -> set[str]:
+    """SIRET déjà en prospection dans d'AUTRES campagnes — la Veille ne doit
+    pas recollecter une entreprise dont un lead est encore actif ailleurs :
+    c'est ce qui créait des fiches Odoo en double et des prospects recontactés
+    par email (constaté le 2026-07-15 : jusqu'à 4 fiches Odoo pour un même
+    SIRET, dont une déjà gagnée). Seuls ECARTE (rejet scoring) et REJETE
+    (rejet commercial) libèrent l'entreprise pour une nouvelle prospection."""
+    stmt = (
+        select(Lead.siret)
+        .distinct()
+        .where(
+            Lead.campaign_id != exclude_campaign_id,
+            Lead.status.not_in([LeadStatus.ECARTE, LeadStatus.REJETE]),
+        )
+    )
+    result = await db.execute(stmt)
+    return set(result.scalars().all())
+
+
+async def count_sirets_in_prospection_matching(
+    db: AsyncSession, codes_naf: list[str], codes_postaux: list[str]
+) -> int:
+    """Estimation du recouvrement pour l'écran de création de campagne :
+    entreprises déjà en prospection (statut hors ECARTE/REJETE) dont le secteur
+    ET le code postal correspondent aux critères visés. Le code postal est
+    cherché dans l'adresse (pas de colonne dédiée) — approximation suffisante
+    pour annoncer le vivier disponible avant le lancement."""
+    if not codes_naf or not codes_postaux:
+        return 0
+    stmt = select(func.count(func.distinct(Lead.siret))).where(
+        Lead.status.not_in([LeadStatus.ECARTE, LeadStatus.REJETE]),
+        Lead.secteur.in_(codes_naf),
+        or_(*[Lead.adresse.ilike(f"%{cp}%") for cp in codes_postaux]),
+    )
+    result = await db.execute(stmt)
+    return result.scalar_one()
 
 
 async def count_usable_leads_for_campaign(db: AsyncSession, campaign_id: uuid.UUID) -> int:
@@ -258,6 +298,15 @@ async def list_leads_to_sync_crm(
 async def update_lead_synced_crm(db: AsyncSession, lead: Lead) -> Lead:
     """Passe le lead en SYNCHRONISE_CRM une fois le push Odoo réussi."""
     lead.status = LeadStatus.SYNCHRONISE_CRM
+    db.add(lead)
+    await db.commit()
+    await db.refresh(lead)
+    return lead
+
+
+async def update_lead_contacted(db: AsyncSession, lead: Lead) -> Lead:
+    """Passe le lead en CONTACTE une fois l'email envoyé par le module mail d'Odoo."""
+    lead.status = LeadStatus.CONTACTE
     db.add(lead)
     await db.commit()
     await db.refresh(lead)

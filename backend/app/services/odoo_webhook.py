@@ -50,10 +50,15 @@ async def find_lead_for_event(
             return lead
 
     if odoo_lead_id is not None:
+        # Plusieurs leads SMA-PC peuvent pointer vers la même fiche Odoo depuis
+        # le rattachement anti-doublon (find_crm_duplicate) : on prend le plus
+        # récent au lieu de laisser scalar_one_or_none échouer sur multiples.
         result = await db.execute(
             select(Lead)
             .join(CRMSync, CRMSync.lead_id == Lead.id)
             .where(CRMSync.odoo_lead_id == odoo_lead_id)
+            .order_by(Lead.created_at.desc())
+            .limit(1)
         )
         return result.scalar_one_or_none()
 

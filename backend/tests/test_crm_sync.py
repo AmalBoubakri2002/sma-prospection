@@ -177,3 +177,95 @@ async def test_push_and_historize_share_the_odoo_user_cache():
 
     user_search_calls = [c for c in execute_kw.call_args_list if c.args[:2] == ("res.users", "search_read")]
     assert len(user_search_calls) == 1
+
+
+# ── send_prospection_email : envoi via le module mail d'Odoo ──────────────────
+
+@pytest.mark.anyio
+async def test_send_prospection_email_creates_sends_and_checks_state():
+    # create → 55 ; send → None ; read state → sent
+    execute_kw = AsyncMock(side_effect=[55, None, [{"id": 55, "state": "sent"}]])
+
+    with patch("app.agents.crm.sync.odoo_client.execute_kw", execute_kw):
+        mail_id = await sync.send_prospection_email(
+            42, "Objet test", "Ligne 1\nLigne <2>", "prospect@example.com", "commercial@example.com"
+        )
+
+    assert mail_id == 55
+    create_call = execute_kw.call_args_list[0]
+    assert create_call.args[:2] == ("mail.mail", "create")
+    values = create_call.args[2][0]
+    assert values["email_to"] == "prospect@example.com"
+    assert values["email_from"] == "commercial@example.com"
+    assert values["model"] == "crm.lead"
+    assert values["res_id"] == 42
+    # Texte brut → HTML : échappement des caractères spéciaux + retours ligne
+    assert "Ligne 1<br>Ligne &lt;2&gt;" in values["body_html"]
+
+    send_call = execute_kw.call_args_list[1]
+    assert send_call.args[:2] == ("mail.mail", "send")
+    assert send_call.args[3] == {"raise_exception": True}
+
+
+@pytest.mark.anyio
+async def test_send_prospection_email_raises_when_state_not_sent():
+    """Odoo peut marquer 'exception' sans lever : l'état est vérifié après send,
+    le lead ne doit pas passer CONTACTE sur un email non parti."""
+    from app.services.odoo_client import OdooError
+
+    execute_kw = AsyncMock(side_effect=[55, None, [{"id": 55, "state": "exception"}]])
+
+    with patch("app.agents.crm.sync.odoo_client.execute_kw", execute_kw):
+        with pytest.raises(OdooError, match="exception"):
+            await sync.send_prospection_email(
+                42, "Objet", "Contenu", "prospect@example.com", "commercial@example.com"
+            )
+
+
+# ── find_crm_duplicate : détection d'une entreprise déjà suivie dans Odoo ─────
+
+@pytest.mark.anyio
+async def test_find_crm_duplicate_returns_existing_lead_for_same_siret():
+    """Même SIRET déjà dans Odoo via une autre campagne → id de la fiche existante."""
+    lead = _make_lead()
+    # search x_sma_pc_id → [] (pas notre fiche) ; search x_siret → [77]
+    execute_kw = AsyncMock(side_effect=[[], [77]])
+
+    with patch("app.agents.crm.sync.odoo_client.execute_kw", execute_kw):
+        assert await sync.find_crm_duplicate(lead) == 77
+
+    siret_call = execute_kw.call_args_list[1]
+    assert siret_call.args[2] == [[["x_siret", "=", lead.siret]]]
+
+
+@pytest.mark.anyio
+async def test_find_crm_duplicate_ignores_own_record_on_retry():
+    """Notre propre fiche (même x_sma_pc_id) n'est pas un doublon : c'est un
+    retry du même lead, géré par push_lead_to_odoo en write."""
+    lead = _make_lead()
+    execute_kw = AsyncMock(side_effect=[[42]])  # search x_sma_pc_id → notre fiche
+
+    with patch("app.agents.crm.sync.odoo_client.execute_kw", execute_kw):
+        assert await sync.find_crm_duplicate(lead) is None
+
+    assert execute_kw.await_count == 1  # pas de recherche SIRET ensuite
+
+
+@pytest.mark.anyio
+async def test_find_crm_duplicate_none_when_siret_unknown_in_odoo():
+    lead = _make_lead()
+    execute_kw = AsyncMock(side_effect=[[], []])
+
+    with patch("app.agents.crm.sync.odoo_client.execute_kw", execute_kw):
+        assert await sync.find_crm_duplicate(lead) is None
+
+
+@pytest.mark.anyio
+async def test_find_crm_duplicate_none_without_siret():
+    lead = _make_lead(siret=None)
+    execute_kw = AsyncMock()
+
+    with patch("app.agents.crm.sync.odoo_client.execute_kw", execute_kw):
+        assert await sync.find_crm_duplicate(lead) is None
+
+    execute_kw.assert_not_awaited()
