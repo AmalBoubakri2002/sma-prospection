@@ -4,7 +4,12 @@ from app.agents.veille.deduplicator import dedupe
 from app.agents.veille.normalizer import normalize_etablissement
 from app.agents.veille.sirene import SireneClient
 from app.models.campaign import Campaign
-from app.services.lead import bulk_create_leads, count_usable_leads_for_campaign, get_existing_sirets
+from app.services.lead import (
+    bulk_create_leads,
+    count_usable_leads_for_campaign,
+    get_existing_sirets,
+    get_sirets_prospected_elsewhere,
+)
 
 
 async def run_veille(db: AsyncSession, campaign: Campaign) -> dict:
@@ -25,12 +30,21 @@ async def run_veille(db: AsyncSession, campaign: Campaign) -> dict:
     if quota_restant == 0:
         return {"leads_collected": 0, "raison": "quota déjà atteint"}
 
+    # Dédup inter-campagnes : une entreprise dont un lead est encore actif dans
+    # une autre campagne n'est pas recollectée (sinon doublons Odoo + prospect
+    # recontacté par email). Écartés/rejetés ailleurs restent prospectables.
+    # L'exclusion est passée à SIRENE pour que la pagination avance jusqu'à
+    # trouver des entreprises réellement nouvelles.
+    sirets_ailleurs = await get_sirets_prospected_elsewhere(db, campaign.id)
+    sirets_bloques = existing_sirets | sirets_ailleurs
+
     client = SireneClient()
     raw_etablissements, total_sirene = await client.search_etablissements(
         codes_naf=campaign.codes_naf,
         codes_postaux=campaign.codes_postaux,
         tranches_effectifs=campaign.tranches_effectifs,
         quota=quota_restant,
+        exclude_sirets=sirets_bloques,
     )
 
     # Mémorise le plafond réel SIRENE pour l'afficher dans le dashboard.
@@ -48,7 +62,7 @@ async def run_veille(db: AsyncSession, campaign: Campaign) -> dict:
     # pour ne pas garder des leads dont le secteur affiché est hors périmètre
     # (cf. Aboca S.P.A. en 46.46Z / Numberly en 63.11Z sur une campagne 70.22Z-73.20Z).
     normalized = [lead for lead in normalized if lead["secteur"] in campaign.codes_naf]
-    nouveaux = dedupe(normalized, existing_sirets)
+    nouveaux = dedupe(normalized, sirets_bloques)
 
     created = await bulk_create_leads(db, campaign.id, nouveaux)
 

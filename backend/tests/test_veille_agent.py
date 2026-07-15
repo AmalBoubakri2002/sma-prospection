@@ -62,12 +62,14 @@ async def test_quota_recalcule_sur_leads_utiles_relance_la_collecte():
     with (
         patch("app.agents.veille.agent.get_existing_sirets", new_callable=AsyncMock,
               return_value={f"siret{i}" for i in range(14)}),
+        patch("app.agents.veille.agent.get_sirets_prospected_elsewhere", new_callable=AsyncMock,
+              return_value=set()),
         patch("app.agents.veille.agent.count_usable_leads_for_campaign", new_callable=AsyncMock,
               return_value=12),  # 2 écartés faute de données, exclus du compte utile
         patch("app.agents.veille.agent.SireneClient", return_value=mock_client),
         patch("app.agents.veille.agent.bulk_create_leads", new_callable=AsyncMock, return_value=[]),
     ):
-        result = await run_veille(db, campaign)
+        await run_veille(db, campaign)
 
     mock_client.search_etablissements.assert_awaited_once()
     called_quota = mock_client.search_etablissements.call_args.kwargs["quota"]
@@ -88,6 +90,8 @@ async def test_dedup_utilise_bien_tous_les_sirets_pas_seulement_les_utiles():
     with (
         patch("app.agents.veille.agent.get_existing_sirets", new_callable=AsyncMock,
               return_value=all_sirets),
+        patch("app.agents.veille.agent.get_sirets_prospected_elsewhere", new_callable=AsyncMock,
+              return_value=set()),
         patch("app.agents.veille.agent.count_usable_leads_for_campaign", new_callable=AsyncMock,
               return_value=12),
         patch("app.agents.veille.agent.SireneClient", return_value=mock_client),
@@ -99,3 +103,34 @@ async def test_dedup_utilise_bien_tous_les_sirets_pas_seulement_les_utiles():
 
     mock_dedupe.assert_called_once()
     assert mock_dedupe.call_args[0][1] == all_sirets
+
+
+@pytest.mark.anyio
+async def test_dedup_exclut_les_sirets_en_prospection_dans_dautres_campagnes():
+    """Dédup inter-campagnes : une entreprise dont un lead est actif ailleurs
+    ne doit pas être recollectée (sinon doublons Odoo + prospect recontacté
+    par email — constaté le 2026-07-15 : jusqu'à 4 fiches Odoo par SIRET)."""
+    campaign = _make_campaign(quota=14)
+    db = AsyncMock()
+    sirets_campagne = {"siret_a"}
+    sirets_ailleurs = {"siret_b", "siret_c"}
+
+    mock_client = AsyncMock()
+    mock_client.search_etablissements = AsyncMock(return_value=([], 100))
+
+    with (
+        patch("app.agents.veille.agent.get_existing_sirets", new_callable=AsyncMock,
+              return_value=sirets_campagne),
+        patch("app.agents.veille.agent.get_sirets_prospected_elsewhere", new_callable=AsyncMock,
+              return_value=sirets_ailleurs),
+        patch("app.agents.veille.agent.count_usable_leads_for_campaign", new_callable=AsyncMock,
+              return_value=1),
+        patch("app.agents.veille.agent.SireneClient", return_value=mock_client),
+        patch("app.agents.veille.agent.dedupe") as mock_dedupe,
+        patch("app.agents.veille.agent.bulk_create_leads", new_callable=AsyncMock, return_value=[]),
+    ):
+        mock_dedupe.return_value = []
+        await run_veille(db, campaign)
+
+    # La dédup reçoit l'union : SIRET de la campagne + SIRET actifs ailleurs
+    assert mock_dedupe.call_args[0][1] == {"siret_a", "siret_b", "siret_c"}

@@ -83,3 +83,60 @@ async def test_raises_on_api_error():
     with patch.object(client, "_get_with_retry", new_callable=AsyncMock, return_value=page):
         with pytest.raises(SireneAPIError):
             await client.search_etablissements(["62.01Z"], ["75008"], ["12"], quota=5)
+
+
+@pytest.mark.anyio
+async def test_pagination_continues_past_excluded_sirets():
+    """Les SIRET exclus (déjà en prospection) ne bloquent plus la collecte :
+    la pagination avance jusqu'à trouver des entreprises nouvelles, au lieu de
+    s'arrêter sur une première page saturée de SIRET connus."""
+    client = SireneClient(api_key="fake-key", base_url="https://fake.sirene")
+
+    page1 = _make_response(200, {
+        "header": {"total": 40},
+        "etablissements": [{"siret": f"EXCLU{i:04d}"} for i in range(20)],
+    })
+    page2 = _make_response(200, {
+        "header": {"total": 40},
+        "etablissements": [{"siret": f"NOUVEAU{i:04d}"} for i in range(20)],
+    })
+
+    with (
+        patch.object(client, "_get_with_retry", new_callable=AsyncMock, side_effect=[page1, page2]),
+        patch("app.agents.veille.sirene.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        results, total = await client.search_etablissements(
+            ["62.01Z"], ["75008"], ["12"], quota=5,
+            exclude_sirets={f"EXCLU{i:04d}" for i in range(20)},
+        )
+
+    assert len(results) == 5
+    assert all(r["siret"].startswith("NOUVEAU") for r in results)
+    assert total == 40
+
+
+@pytest.mark.anyio
+async def test_intra_pagination_duplicate_sirets_kept_once():
+    """Un même SIRET revu sur deux pages (réordonnancement SIRENE) n'est gardé qu'une fois."""
+    client = SireneClient(api_key="fake-key", base_url="https://fake.sirene")
+
+    page1 = _make_response(200, {
+        "header": {"total": 25},
+        "etablissements": [{"siret": f"S{i:04d}"} for i in range(20)],
+    })
+    page2 = _make_response(200, {
+        "header": {"total": 25},
+        "etablissements": [{"siret": "S0000"}, {"siret": "S9999"}],
+    })
+
+    with (
+        patch.object(client, "_get_with_retry", new_callable=AsyncMock, side_effect=[page1, page2]),
+        patch("app.agents.veille.sirene.asyncio.sleep", new_callable=AsyncMock),
+    ):
+        results, _ = await client.search_etablissements(
+            ["62.01Z"], ["75008"], ["12"], quota=21,
+        )
+
+    sirets = [r["siret"] for r in results]
+    assert sirets.count("S0000") == 1
+    assert "S9999" in sirets

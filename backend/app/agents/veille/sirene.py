@@ -58,13 +58,24 @@ class SireneClient:
         codes_postaux: list[str],
         tranches_effectifs: list[str],
         quota: int,
+        exclude_sirets: set[str] | None = None,
     ) -> tuple[list[dict], int]:
+        """Collecte jusqu'à `quota` établissements NOUVEAUX (hors exclude_sirets).
+
+        L'exclusion s'applique PENDANT la pagination : SIRENE renvoie toujours
+        les résultats dans le même ordre, donc filtrer après coup sur une fenêtre
+        de `quota` lignes plafonnait la collecte aux premières entreprises —
+        toutes déjà en prospection après quelques campagnes, alors que des
+        centaines d'autres attendaient dans les pages suivantes (bug constaté
+        le 2026-07-15 : 3 leads livrés sur 9 demandés avec 285 disponibles)."""
         if not self.api_key:
             raise SireneConfigError("INSEE_API_KEY non configurée (voir backend/.env)")
 
+        exclude = exclude_sirets or set()
         query = build_query(codes_naf, codes_postaux, tranches_effectifs)
-        page_size = min(settings.SIRENE_PAGE_SIZE, quota)
+        page_size = settings.SIRENE_PAGE_SIZE
         results: list[dict] = []
+        seen: set[str] = set()  # dédup intra-pagination
         debut = 0
         total_sirene = 0
 
@@ -74,9 +85,8 @@ class SireneClient:
             base_url=self.base_url, headers=headers, timeout=15.0
         ) as client:
             while len(results) < quota:
-                nombre = min(page_size, quota - len(results))
                 response = await self._get_with_retry(
-                    client, "/siret", {"q": query, "nombre": nombre, "debut": debut}
+                    client, "/siret", {"q": query, "nombre": page_size, "debut": debut}
                 )
 
                 if response.status_code == 404:
@@ -91,8 +101,14 @@ class SireneClient:
                 if not etablissements:
                     break
 
-                results.extend(etablissements)
                 debut += len(etablissements)
+
+                for etab in etablissements:
+                    siret = etab.get("siret", "")
+                    if siret and (siret in exclude or siret in seen):
+                        continue
+                    seen.add(siret)
+                    results.append(etab)
 
                 total = data.get("header", {}).get("total")
                 if total is not None:
@@ -104,6 +120,37 @@ class SireneClient:
                     await asyncio.sleep(settings.SIRENE_REQUEST_DELAY_SECONDS)
 
         return results[:quota], total_sirene
+
+    async def count_etablissements(
+        self,
+        codes_naf: list[str],
+        codes_postaux: list[str],
+        tranches_effectifs: list[str],
+    ) -> int:
+        """Nombre total d'établissements SIRENE correspondant aux critères.
+
+        Une seule requête (nombre=1) : on ne lit que header.total, sans
+        télécharger les fiches. Sert à l'estimation du vivier disponible
+        affichée avant le lancement d'une campagne."""
+        if not self.api_key:
+            raise SireneConfigError("INSEE_API_KEY non configurée (voir backend/.env)")
+
+        query = build_query(codes_naf, codes_postaux, tranches_effectifs)
+        headers = {"X-INSEE-Api-Key-Integration": self.api_key, "Accept": "application/json"}
+
+        async with httpx.AsyncClient(
+            base_url=self.base_url, headers=headers, timeout=15.0
+        ) as client:
+            response = await self._get_with_retry(
+                client, "/siret", {"q": query, "nombre": 1, "debut": 0}
+            )
+            if response.status_code == 404:
+                return 0  # zéro résultat pour cette requête : pas une erreur
+            if response.status_code != 200:
+                raise SireneAPIError(
+                    f"Erreur API SIRENE ({response.status_code}) : {response.text[:300]}"
+                )
+            return response.json().get("header", {}).get("total", 0)
 
     async def _get_with_retry(
         self, client: httpx.AsyncClient, path: str, params: dict, max_retries: int = 3
