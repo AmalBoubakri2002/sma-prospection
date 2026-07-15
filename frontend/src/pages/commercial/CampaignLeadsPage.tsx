@@ -576,6 +576,23 @@ export default function CampaignLeadsPage() {
           </Text>
         </div>
       )}
+      {/* Quota non atteint : la protection anti-doublons exclut les entreprises
+          déjà en prospection — expliquer plutôt que laisser un "3/9" muet. */}
+      {campaign?.status === "completed" && leads.length < campaign.quota && (
+        <div style={{
+          background: `${C.amber}10`, border: `1px solid ${C.amber}50`,
+          borderRadius: R.lg, padding: "12px 18px", marginBottom: 16,
+          display: "flex", alignItems: "center", gap: 12,
+        }}>
+          <CloseCircleOutlined style={{ color: C.amber, fontSize: 18 }} />
+          <Text style={{ fontWeight: 600, color: C.text, fontSize: 13 }}>
+            {leads.length} lead{leads.length > 1 ? "s" : ""} livré{leads.length > 1 ? "s" : ""} sur {campaign.quota} demandés —
+            vivier épuisé pour ces critères : les autres entreprises de la cible sont déjà
+            en prospection dans vos campagnes, ou le stock SIRENE est atteint.
+            Élargissez la zone ou le secteur pour collecter davantage.
+          </Text>
+        </div>
+      )}
 
       {/* ── Onglets ─────────────────────────────────────────────── */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>

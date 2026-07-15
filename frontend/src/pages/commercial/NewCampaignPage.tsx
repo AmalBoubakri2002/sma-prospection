@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Typography, Select, InputNumber, Button, App, Tag, Input } from "antd";
 import {
   AimOutlined, SearchOutlined,
@@ -9,6 +9,12 @@ import api from "@/utils/api";
 import { C, S, R } from "@/styles/tokens";
 
 const { Title, Text } = Typography;
+
+interface PoolEstimate {
+  total_sirene: number;
+  deja_en_prospection: number;
+  disponible_estime: number;
+}
 
 // ─── Static data ──────────────────────────────────────────────────────────────
 
@@ -107,6 +113,38 @@ export default function NewCampaignPage() {
   const [tranchesEffectifs, setTranchesEffectifs]  = useState<string[]>(["12", "21"]);
   const [quota,             setQuota]              = useState(50);
   const [launching,         setLaunching]          = useState(false);
+  const [estimate,          setEstimate]           = useState<PoolEstimate | null>(null);
+  const [estimating,        setEstimating]         = useState(false);
+
+  // Estimation du vivier disponible dès que les critères sont complets, pour
+  // que le commercial ajuste son quota AVANT de lancer (au lieu de découvrir
+  // un 3/9 en fin de campagne). Debounce 600 ms pour épargner l'API SIRENE.
+  useEffect(() => {
+    if (!codesNaf.length || !codesPostaux.length) {
+      setEstimate(null);
+      return;
+    }
+    setEstimating(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data } = await api.get<PoolEstimate>("/campaigns/estimate", {
+          params: {
+            codes_naf:          codesNaf.join(","),
+            codes_postaux:      codesPostaux.join(","),
+            tranches_effectifs: tranchesEffectifs.join(","),
+          },
+        });
+        setEstimate(data);
+      } catch {
+        setEstimate(null); // estimation indisponible ≠ bloquant : on n'empêche pas le lancement
+      } finally {
+        setEstimating(false);
+      }
+    }, 600);
+    return () => { clearTimeout(timer); setEstimating(false); };
+  }, [codesNaf, codesPostaux, tranchesEffectifs]);
+
+  const quotaOverPool = estimate !== null && quota > estimate.disponible_estime;
 
   const toggle = (list: string[], val: string, set: (v: string[]) => void) =>
     set(list.includes(val) ? list.filter(v => v !== val) : [...list, val]);
@@ -369,6 +407,39 @@ export default function NewCampaignPage() {
                 prospects max
               </Text>
             </div>
+
+            {/* Estimation du vivier disponible */}
+            {(estimating || estimate) && (
+              <div style={{
+                background:   quotaOverPool ? "rgba(217,119,6,0.25)" : "rgba(255,255,255,0.08)",
+                border:       quotaOverPool ? "1px solid rgba(255,196,110,0.55)" : "1px solid transparent",
+                borderRadius: R.lg,
+                padding:      "12px 14px",
+                marginBottom: 18,
+              }}>
+                {estimating ? (
+                  <Text style={{ fontSize: 12.5, color: "rgba(255,255,255,0.6)" }}>
+                    Estimation du vivier en cours…
+                  </Text>
+                ) : estimate && (
+                  <>
+                    <Text style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#fff" }}>
+                      ≈ {estimate.disponible_estime} entreprise{estimate.disponible_estime > 1 ? "s" : ""} disponible{estimate.disponible_estime > 1 ? "s" : ""}
+                    </Text>
+                    <Text style={{ display: "block", fontSize: 11.5, color: "rgba(255,255,255,0.55)", marginTop: 3 }}>
+                      {estimate.total_sirene} dans SIRENE · {estimate.deja_en_prospection} déjà en prospection
+                    </Text>
+                    {quotaOverPool && (
+                      <Text style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "#ffc46e", marginTop: 6 }}>
+                        ⚠ Quota supérieur au vivier : vous recevrez au plus
+                        ~{estimate.disponible_estime} lead{estimate.disponible_estime > 1 ? "s" : ""}.
+                        Réduisez le quota ou élargissez la cible.
+                      </Text>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             <Button
               block

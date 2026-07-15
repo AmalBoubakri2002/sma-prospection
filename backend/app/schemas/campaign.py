@@ -73,6 +73,15 @@ class ScoreMinimumUpdate(BaseModel):
     _validate_score_minimum = field_validator("score_minimum")(_validate_score_range)
 
 
+class CampaignEstimateResponse(BaseModel):
+    """Estimation du vivier disponible pour des critères de ciblage, affichée
+    avant le lancement — le commercial ajuste son quota en connaissance de cause."""
+
+    total_sirene: int          # entreprises correspondantes dans SIRENE
+    deja_en_prospection: int   # dont déjà en prospection dans d'autres campagnes
+    disponible_estime: int     # vivier réellement collectable (estimation)
+
+
 class AgentTaskSummary(BaseModel):
     agent_name: str
     status: str

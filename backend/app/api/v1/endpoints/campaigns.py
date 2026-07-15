@@ -2,6 +2,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.agents.veille.sirene import SireneAPIError, SireneClient, SireneConfigError
 from app.api.deps import require_active_user
 from app.db.base import get_db
 from app.models.agent_task import AgentName
@@ -10,6 +11,7 @@ from app.models.user import User
 from app.schemas.campaign import (
     AgentTaskSummary,
     CampaignCreate,
+    CampaignEstimateResponse,
     CampaignResponse,
     CampaignStatusResponse,
     CampaignStatusUpdate,
@@ -26,6 +28,7 @@ from app.services.campaign import (
 from app.services.lead import (
     count_leads_by_campaign,
     count_leads_by_status_for_campaign,
+    count_sirets_in_prospection_matching,
 )
 
 router = APIRouter()
@@ -50,6 +53,40 @@ async def list_(
     for campaign in campaigns:
         campaign.leads_count = counts.get(campaign.id, 0)
     return campaigns
+
+
+# Déclarée AVANT /{campaign_id}, sinon FastAPI tenterait de parser "estimate"
+# comme un UUID de campagne.
+@router.get("/estimate", response_model=CampaignEstimateResponse)
+async def estimate_pool(
+    codes_naf: str,
+    codes_postaux: str,
+    tranches_effectifs: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_active_user),
+):
+    """Estime le vivier disponible pour des critères de ciblage (avant lancement) :
+    total SIRENE moins les entreprises déjà en prospection dans d'autres campagnes.
+    Les listes sont passées en query string séparées par des virgules."""
+    naf = [c.strip() for c in codes_naf.split(",") if c.strip()]
+    cps = [c.strip() for c in codes_postaux.split(",") if c.strip()]
+    tranches = [c.strip() for c in tranches_effectifs.split(",") if c.strip()]
+    if not naf or not cps:
+        raise HTTPException(status_code=422, detail="codes_naf et codes_postaux requis")
+
+    try:
+        total = await SireneClient().count_etablissements(naf, cps, tranches)
+    except SireneConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except SireneAPIError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    en_prospection = await count_sirets_in_prospection_matching(db, naf, cps)
+    return CampaignEstimateResponse(
+        total_sirene=total,
+        deja_en_prospection=en_prospection,
+        disponible_estime=max(total - en_prospection, 0),
+    )
 
 
 @router.get("/{campaign_id}", response_model=CampaignResponse)
