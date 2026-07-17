@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.ws_manager import manager
+from app.core.notification_bus import publish
 from app.models.notification import Notification, NotificationType
 from app.models.user import User
 from app.schemas.notification import NotificationResponse
@@ -25,12 +25,21 @@ async def create_notification(
         related_user_id=related_user_id,
     )
     db.add(notification)
+    await db.flush()  # applique les défauts (id, created_at) avant sérialisation
+
+    # Publication via le bus PostgreSQL (LISTEN/NOTIFY) dans la MÊME transaction :
+    # le push temps réel fonctionne depuis n'importe quel processus (API ou worker),
+    # et n'est délivré qu'au commit — jamais pour une transaction annulée.
+    await publish(
+        db,
+        recipient_id,
+        {
+            "kind": "notification",
+            "data": NotificationResponse.model_validate(notification).model_dump(mode="json"),
+        },
+    )
     await db.commit()
     await db.refresh(notification)
-    await manager.send_to_user(
-        recipient_id,
-        NotificationResponse.model_validate(notification).model_dump(mode="json"),
-    )
     return notification
 
 

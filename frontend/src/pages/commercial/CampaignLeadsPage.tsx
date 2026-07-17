@@ -10,6 +10,8 @@ import {
   MailOutlined, SaveOutlined, CloseOutlined,
 } from "@ant-design/icons";
 import api from "@/utils/api";
+import { useNotifications } from "@/hooks/useNotifications";
+import type { CampaignUpdate, NotificationItem } from "@/hooks/useNotifications";
 import { C, S, R } from "@/styles/tokens";
 import { ScoreBadge, formatCA, formatCaOrUnknown, hasPartialFinancials, type ShapFeature } from "@/components/LeadScoreBadge";
 
@@ -357,6 +359,23 @@ export default function CampaignLeadsPage() {
     });
     fetchLeads("tous");
   }, [campaignId, fetchLeads]);
+
+  // Temps réel : la page suit la progression du pipeline (campaign_update émis
+  // à chaque transition de statut) et les retours CRM, sans rechargement.
+  const handleCampaignUpdate = useCallback((update: CampaignUpdate) => {
+    if (update.campaign_id !== campaignId) return;
+    api.get<Campaign>(`/campaigns/${campaignId}`).then((r) => setCampaign(r.data)).catch(() => {});
+    fetchLeads(tab);
+  }, [campaignId, fetchLeads, tab]);
+
+  const handleLeadNotification = useCallback((notif: NotificationItem) => {
+    // Les statuts des leads affichés changent sur ces événements
+    if (["EMAILS_PRETS", "LEAD_REPONDU", "LEAD_SANS_REPONSE"].includes(notif.type)) {
+      fetchLeads(tab);
+    }
+  }, [fetchLeads, tab]);
+
+  useNotifications(handleLeadNotification, handleCampaignUpdate);
 
   // Seuil de qualification
   const applyThreshold = async () => {

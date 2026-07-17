@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,6 +7,7 @@ from sqlalchemy import select
 
 from app.api.v1.router import api_router
 from app.core.config import settings
+from app.core.notification_bus import listen_forever
 from app.core.security import hash_password
 from app.db.base import AsyncSessionLocal, Base, engine
 from app.models import Notification, User  # noqa: F401 — registers all models on Base.metadata
@@ -33,7 +35,13 @@ async def lifespan(app: FastAPI):
     # Les migrations sont gérées par Alembic (alembic upgrade head).
     # create_all est volontairement absent pour éviter les conflits avec les migrations.
     await _seed_admin()
+    # Bus de notifications : le processus API écoute PostgreSQL (LISTEN/NOTIFY)
+    # et pousse vers les WebSockets — les workers, eux, ne font que publier.
+    listener = asyncio.create_task(listen_forever())
     yield
+    listener.cancel()
+    with suppress(asyncio.CancelledError):
+        await listener
     await engine.dispose()
 
 

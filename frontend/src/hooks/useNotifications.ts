@@ -12,13 +12,23 @@ export interface NotificationItem {
   created_at: string;
 }
 
+export interface CampaignUpdate {
+  campaign_id: string;
+  status: string;
+}
+
 const RECONNECT_DELAY_MS = 3000;
 
-export function useNotifications(onNotification?: (notification: NotificationItem) => void) {
+export function useNotifications(
+  onNotification?: (notification: NotificationItem) => void,
+  onCampaignUpdate?: (update: CampaignUpdate) => void,
+) {
   const token = useAuthStore((s) => s.token);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const onNotificationRef = useRef(onNotification);
   onNotificationRef.current = onNotification;
+  const onCampaignUpdateRef = useRef(onCampaignUpdate);
+  onCampaignUpdateRef.current = onCampaignUpdate;
 
   useEffect(() => {
     if (!token) return;
@@ -40,9 +50,16 @@ export function useNotifications(onNotification?: (notification: NotificationIte
 
       socket.onmessage = (event) => {
         try {
-          const notification: NotificationItem = JSON.parse(event.data);
-          setNotifications((prev) => [notification, ...prev]);
-          onNotificationRef.current?.(notification);
+          // Contrat du bus (voir backend notification_bus.py) : chaque message
+          // porte un "kind" — notification (cloche) ou campaign_update (pages).
+          const msg = JSON.parse(event.data);
+          if (msg.kind === "campaign_update") {
+            onCampaignUpdateRef.current?.(msg.data as CampaignUpdate);
+          } else if (msg.kind === "notification") {
+            const notification = msg.data as NotificationItem;
+            setNotifications((prev) => [notification, ...prev]);
+            onNotificationRef.current?.(notification);
+          }
         } catch {
           // payload inattendu, on l'ignore
         }

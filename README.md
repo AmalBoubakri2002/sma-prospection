@@ -72,11 +72,12 @@ Sans secret configuré côté backend, l'endpoint répond 503 (fermé par défau
 - Pipeline complet Veille → Enrichissement → Scoring → Rédaction → CRM (LangGraph)
 - Intégration CRM Odoo 17 (stage, vendeur, historique)
 - Boucle retour CRM : webhooks Odoo (gagné / perdu / réponse email) → statuts `REPONDU` / `SANS_REPONSE` + notification du commercial
+- Notifications temps réel : bus PostgreSQL LISTEN/NOTIFY entre les workers et l'API, poussé aux navigateurs par WebSocket (pas de Redis — même choix « PostgreSQL d'abord » que la file `agent_tasks`)
 - Orchestrateur de reprise automatique des tâches en échec
 
 ### À venir
-- Notifications temps réel (au-delà du polling actuel)
 - Tableaux de bord d'analyse de campagne (SHAP / explicabilité du scoring)
+- Endpoint `/metrics` (KPIs du rapport de performance)
 
 ## Démarrage rapide
 

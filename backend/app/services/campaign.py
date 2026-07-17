@@ -3,6 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.notification_bus import publish
 from app.models.campaign import Campaign
 from app.schemas.campaign import CampaignCreate
 
@@ -59,6 +60,17 @@ async def update_campaign_status(
     db: AsyncSession, campaign: Campaign, status: str
 ) -> Campaign:
     campaign.status = status
+    # Événement temps réel vers le commercial (même transaction, délivré au
+    # commit) : le tableau de bord et la page campagne suivent la progression
+    # du pipeline en direct, sans polling ni rechargement de page.
+    await publish(
+        db,
+        campaign.commercial_id,
+        {
+            "kind": "campaign_update",
+            "data": {"campaign_id": str(campaign.id), "status": status},
+        },
+    )
     await db.commit()
     await db.refresh(campaign)
     return campaign

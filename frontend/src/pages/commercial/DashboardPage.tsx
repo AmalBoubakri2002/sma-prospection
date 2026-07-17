@@ -121,15 +121,16 @@ export default function CommercialDashboardPage() {
       .catch(() => {});
   }, [isPending]);
 
-  // Rafraîchit les stats quand une notification EMAILS_PRETS arrive
-  const handleNotification = useCallback((notif: NotificationItem) => {
-    if (notif.type === "EMAILS_PRETS") {
-      api.get<LeadStats>("/leads/stats").then((res) => setStats(res.data)).catch(() => {});
-      api.get<Campaign[]>("/campaigns/").then((res) => setCampaigns(res.data)).catch(() => {});
-    }
+  // Rafraîchit KPIs et campagnes sur tout événement temps réel : notifications
+  // (emails prêts, retours CRM) et progression de pipeline (campaign_update).
+  const refresh = useCallback(() => {
+    api.get<LeadStats>("/leads/stats").then((res) => setStats(res.data)).catch(() => {});
+    api.get<Campaign[]>("/campaigns/").then((res) => setCampaigns(res.data)).catch(() => {});
   }, []);
 
-  useNotifications(handleNotification);
+  const handleNotification = useCallback((_notif: NotificationItem) => refresh(), [refresh]);
+
+  useNotifications(handleNotification, refresh);
 
   const now      = new Date();
   const hour     = now.getHours();
