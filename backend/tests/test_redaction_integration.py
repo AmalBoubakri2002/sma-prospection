@@ -58,12 +58,14 @@ async def test_integration_genere_email_reel():
     print(context)
     print("───────────────────────────────────────────────────\n")
 
-    client = AsyncOpenAI(
+    # async with : ferme le pool de connexions à la sortie — sans ça, le socket
+    # orphelin était ramassé pendant un test ultérieur sur une boucle fermée
+    # (« RuntimeError: Event loop is closed » sur un test victime au hasard).
+    async with AsyncOpenAI(
         base_url=settings.NVIDIA_BASE_URL,
         api_key=settings.NVIDIA_API_KEY,
-    )
-
-    objet, contenu = await _generate_email(client, lead, settings.REDACTION_MODEL)
+    ) as client:
+        objet, contenu = await _generate_email(client, lead, settings.REDACTION_MODEL)
 
     print("── Email généré ────────────────────────────────────")
     print(f"OBJET   : {objet}")

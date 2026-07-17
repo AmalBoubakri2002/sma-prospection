@@ -281,7 +281,23 @@ async def requalify(
                 rejected += 1
 
     await db.commit()
-    return {"qualifies": qualified, "rejetes": rejected, "total": len(leads)}
+
+    # Un lead nouvellement qualifié n'a pas d'email (il était écarté) : sans
+    # tâche de rédaction il resterait QUALIFIE sans suite — bug constaté lors
+    # d'une baisse de seuil. On enchaîne automatiquement la rédaction, sauf si
+    # un agent travaille déjà sur la campagne (le pipeline s'en chargera).
+    redaction_lancee = False
+    if qualified > 0 and campaign.status not in ("running", "scoring_pending", "redaction_pending"):
+        await create_task(db, campaign_id=campaign.id, agent_name=AgentName.REDACTION, payload={})
+        await update_campaign_status(db, campaign, "redaction_pending")
+        redaction_lancee = True
+
+    return {
+        "qualifies": qualified,
+        "rejetes": rejected,
+        "total": len(leads),
+        "redaction_lancee": redaction_lancee,
+    }
 
 
 @router.post("/{campaign_id}/redact", response_model=CampaignResponse, status_code=202)

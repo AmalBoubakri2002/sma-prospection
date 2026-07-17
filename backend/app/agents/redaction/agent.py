@@ -220,7 +220,18 @@ async def run_redaction(db: AsyncSession, campaign: Campaign) -> dict:
         timeout=settings.NVIDIA_API_TIMEOUT_SECONDS,
         max_retries=1,
     )
+    # Fermeture systématique : le client garde un pool de connexions HTTPS
+    # ouvert — dans le worker longue durée, chaque campagne en fuyait un
+    # (sockets orphelins, cf. flake « Event loop is closed » dans les tests).
+    try:
+        return await _redact_campaign(db, campaign, client)
+    finally:
+        await client.close()
 
+
+async def _redact_campaign(
+    db: AsyncSession, campaign: Campaign, client: AsyncOpenAI
+) -> dict:
     total_generes = 0
     total_erreurs = 0
     _MAX_ATTEMPTS = 3

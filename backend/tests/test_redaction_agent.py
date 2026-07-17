@@ -173,6 +173,7 @@ async def test_run_redaction_genere_email_pour_lead_qualifie():
         # Chaîne d'appel : client.chat.completions.create (async)
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=api_response)
+        mock_client.close = AsyncMock()  # run_redaction ferme le client en finally
         mock_client_cls.return_value = mock_client
 
         result = await run_redaction(db, campaign)
@@ -220,6 +221,7 @@ async def test_run_redaction_continue_apres_erreur_unitaire():
                 api_response,
             ]
         )
+        mock_client.close = AsyncMock()  # run_redaction ferme le client en finally
         mock_client_cls.return_value = mock_client
 
         result = await run_redaction(db, campaign)
@@ -258,6 +260,7 @@ async def test_run_redaction_json_mal_forme():
 
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=bad_response)
+        mock_client.close = AsyncMock()  # run_redaction ferme le client en finally
         mock_client_cls.return_value = mock_client
 
         result = await run_redaction(db, campaign)
@@ -288,9 +291,10 @@ async def test_run_redaction_aucun_lead():
 
     with (
         patch("app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock) as mock_list,
-        patch("app.agents.redaction.agent.AsyncOpenAI"),
+        patch("app.agents.redaction.agent.AsyncOpenAI") as mock_client_cls,
         patch("app.agents.redaction.agent.settings") as mock_settings,
     ):
+        mock_client_cls.return_value.close = AsyncMock()
         mock_list.return_value = []
         mock_settings.NVIDIA_API_KEY = "test-key"
         mock_settings.NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
@@ -332,6 +336,7 @@ async def test_run_redaction_bascule_sur_modele_fallback():
         mock_client.chat.completions.create = AsyncMock(
             side_effect=[RuntimeError("DEGRADED function cannot be invoked"), api_response]
         )
+        mock_client.close = AsyncMock()  # run_redaction ferme le client en finally
         mock_client_cls.return_value = mock_client
 
         result = await run_redaction(db, campaign)
@@ -372,6 +377,7 @@ async def test_run_redaction_ne_boucle_pas_indefiniment_si_lead_reste_qualifie()
         mock_client.chat.completions.create = AsyncMock(
             side_effect=RuntimeError("DEGRADED function cannot be invoked")
         )
+        mock_client.close = AsyncMock()  # run_redaction ferme le client en finally
         mock_client_cls.return_value = mock_client
 
         result = await run_redaction(db, campaign)

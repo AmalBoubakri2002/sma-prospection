@@ -7,10 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_active_user
 from app.db.base import get_db
+from app.models.agent_task import AgentName
 from app.models.campaign import Campaign
 from app.models.lead import Lead, LeadStatus
 from app.models.user import User
 from app.schemas.lead import LeadListResponse, LeadResponse
+from app.services.agent_task import create_task
+from app.services.campaign import update_campaign_status
 from app.services.lead import get_leads_stats, list_leads, update_lead_email_content
 
 router = APIRouter()
@@ -109,6 +112,16 @@ async def update_status(
     lead.status = data.status
     await db.commit()
     await db.refresh(lead)
+
+    # Qualification manuelle (override d'un écarté, re-qualification d'un
+    # rejeté) : enchaîner la rédaction, sinon le lead reste QUALIFIE sans
+    # email — même trou que le requalify après changement de seuil.
+    if data.status == LeadStatus.QUALIFIE:
+        campaign = await db.get(Campaign, lead.campaign_id)
+        if campaign and campaign.status not in ("running", "scoring_pending", "redaction_pending"):
+            await create_task(db, campaign_id=campaign.id, agent_name=AgentName.REDACTION, payload={})
+            await update_campaign_status(db, campaign, "redaction_pending")
+
     return LeadResponse.model_validate(lead)
 
 

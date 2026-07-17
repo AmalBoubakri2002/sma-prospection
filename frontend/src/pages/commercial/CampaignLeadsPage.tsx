@@ -384,12 +384,15 @@ export default function CampaignLeadsPage() {
     try {
       const newThreshold = editThreshold / 100;
       await api.patch(`/campaigns/${campaignId}/score-minimum`, { score_minimum: newThreshold });
-      const res = await api.post<{ qualifies: number; rejetes: number }>(
+      const res = await api.post<{ qualifies: number; rejetes: number; redaction_lancee: boolean }>(
         `/campaigns/${campaignId}/requalify`
       );
       setCampaign((c) => c ? { ...c, score_minimum: newThreshold } : c);
       await fetchLeads(tab);
-      message.success(`Seuil appliqué : ${res.data.qualifies} qualifié(s), ${res.data.rejetes} écarté(s) automatiquement`);
+      message.success(
+        `Seuil appliqué : ${res.data.qualifies} qualifié(s), ${res.data.rejetes} écarté(s)` +
+        (res.data.redaction_lancee ? " — génération des emails lancée pour les nouveaux qualifiés" : "")
+      );
     } catch {
       message.error("Erreur lors de l'application du seuil");
     } finally {
