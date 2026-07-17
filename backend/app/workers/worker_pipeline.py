@@ -1,17 +1,17 @@
 """Worker Pipeline — point d'entrée unique pour les tâches PIPELINE, PIPELINE_RESUME, SCORING, REDACTION et CRM.
 
-MemorySaver garde l'état HITL en mémoire du process : si le worker redémarre entre la
-suspension et la validation commerciale, l'état est perdu — resume_pipeline bascule alors
-sur une tâche CRM manuelle (run_crm_task) plutôt que d'échouer, puisqu'à ce stade les leads
-à synchroniser sont déjà VALIDE en base (l'état perdu ne concerne que la position dans le
-graphe LangGraph, pas les données).
+L'état du graphe (dont la suspension HITL) est persisté dans PostgreSQL
+(AsyncPostgresSaver, voir pipeline_graph.get_pipeline) : un redémarrage du
+worker pendant la pause de validation ne perd plus la position dans le graphe.
+resume_pipeline consulte l'état persistant ; si aucun checkpoint suspendu
+n'existe (checkpoints purgés, campagne antérieure à la migration), il bascule
+sur une tâche CRM manuelle (run_crm_task) — filet conservé, les leads VALIDE
+sont déjà en base.
 """
 
 import asyncio
 import logging
 import uuid
-
-from langgraph.types import Command
 
 from app.agents.crm.agent import run_crm
 from app.agents.redaction.agent import run_redaction
@@ -29,16 +29,13 @@ from app.services.agent_task import (
 )
 from app.services.campaign import get_campaign_by_id, update_campaign_status
 from app.services.notification import notify_emails_prets
-from app.workers.pipeline_graph import CampaignPipelineState, pipeline
+from app.workers.pipeline_graph import CampaignPipelineState, get_pipeline
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [worker-pipeline] %(message)s"
 )
 logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 logger = logging.getLogger("worker-pipeline")
-
-# campaign_id en attente de validation HITL ; perdu si le worker redémarre.
-_waiting_for_hitl: set[str] = set()
 
 
 # ── Pipeline LangGraph complet ────────────────────────────────────────────────
@@ -57,16 +54,17 @@ async def run_new_pipeline(task_id: uuid.UUID) -> None:
 
     logger.info("Pipeline démarré — campagne %s", campaign_id)
     try:
+        pipeline = await get_pipeline()
         result = await pipeline.ainvoke(initial, config=config)
 
         snapshot = await pipeline.aget_state(config)
         if snapshot.next:
-            # Graphe suspendu avant le nœud CRM — en attente de validation HITL
+            # Graphe suspendu avant le nœud CRM — en attente de validation HITL.
+            # La position est persistée en base (checkpoint PostgreSQL).
             logger.info(
                 "Pipeline campagne %s suspendu — HITL (prochain nœud : %s)",
                 campaign_id, list(snapshot.next),
             )
-            _waiting_for_hitl.add(campaign_id)
             async with AsyncSessionLocal() as db:
                 task = await db.get(AgentTask, task_id)
                 if task:
@@ -103,13 +101,18 @@ async def resume_pipeline(task_id: uuid.UUID) -> None:
         await mark_running(db, task)
 
     config = {"configurable": {"thread_id": campaign_id}}
+    pipeline = await get_pipeline()
 
-    if campaign_id not in _waiting_for_hitl:
-        # État LangGraph perdu (redémarrage du worker pendant la pause HITL) — mais les
-        # leads validés par le commercial sont déjà VALIDE en base, donc on bascule sur
-        # une tâche CRM manuelle plutôt que d'échouer et de laisser la campagne bloquée.
+    # L'état HITL vit dans les checkpoints PostgreSQL : on vérifie qu'un graphe
+    # suspendu existe bien pour cette campagne (snapshot.next non vide).
+    snapshot = await pipeline.aget_state(config)
+    if not snapshot.next:
+        # Aucun checkpoint suspendu (checkpoints purgés, ou campagne lancée avant
+        # la migration AsyncPostgresSaver) — mais les leads validés par le
+        # commercial sont déjà VALIDE en base, donc on bascule sur une tâche CRM
+        # manuelle plutôt que d'échouer et de laisser la campagne bloquée.
         logger.warning(
-            "Pipeline campagne %s — état HITL perdu (redémarrage du worker), "
+            "Pipeline campagne %s — aucun état HITL suspendu en base, "
             "bascule sur une tâche CRM manuelle",
             campaign_id,
         )
@@ -123,10 +126,14 @@ async def resume_pipeline(task_id: uuid.UUID) -> None:
                 await update_campaign_status(db, campaign, "crm_pending")
         return
 
-    _waiting_for_hitl.discard(campaign_id)
     logger.info("Pipeline campagne %s — reprise après validation HITL", campaign_id)
     try:
-        result = await pipeline.ainvoke(Command(resume=None), config=config)
+        # Reprise d'un breakpoint STATIQUE (interrupt_before=["crm"]) : input=None
+        # relance le graphe depuis le checkpoint suspendu. Command(resume=...) est
+        # réservé aux interruptions dynamiques interrupt() et plante ici
+        # (UnboundLocalError dans langgraph 1.2 — constaté le 2026-07-16, bug
+        # historiquement masqué par la bascule CRM manuelle du MemorySaver).
+        result = await pipeline.ainvoke(None, config=config)
         async with AsyncSessionLocal() as db:
             task = await db.get(AgentTask, task_id)
             if task:

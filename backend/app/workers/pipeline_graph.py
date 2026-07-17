@@ -1,14 +1,19 @@
 """Pipeline LangGraph : Veille → Enrichissement → Scoring → Rédaction → [HITL] → CRM.
-MemorySaver garde l'état en mémoire du process — à remplacer par AsyncPostgresSaver
-en production pour survivre à un redémarrage pendant la pause HITL.
+
+Checkpoints persistés dans PostgreSQL (AsyncPostgresSaver, dossier §9.3) : l'état
+du graphe — en particulier la suspension HITL avant le nœud CRM — survit aux
+redémarrages du worker. Le graphe est compilé paresseusement via get_pipeline()
+car l'initialisation du checkpointer (pool + setup des tables) est asynchrone.
 """
 
 import logging
 import uuid
 from typing import NotRequired, TypedDict
 
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
+from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
 from app.agents.crm.agent import run_crm
 from app.agents.enrichissement.agent import run_enrichissement
@@ -16,6 +21,7 @@ from app.agents.redaction.agent import run_redaction
 from app.agents.scoring.agent import run_scoring
 from app.agents.veille.agent import run_veille
 from app.agents.veille.sirene import SireneConfigError
+from app.core.config import settings
 from app.db.base import AsyncSessionLocal
 from app.models.campaign import Campaign
 from app.models.lead import LeadStatus
@@ -249,8 +255,40 @@ _builder.add_conditional_edges("scoring",        _or_abort("redaction"),      {E
 _builder.add_conditional_edges("redaction",      _or_abort("crm"),            {END: END, "crm": "crm"})
 _builder.add_edge("crm", END)
 
-# Le graphe se suspend avant "crm" (HITL) ; Command(resume=None) le relance après validation.
-pipeline = _builder.compile(
-    checkpointer=MemorySaver(),
-    interrupt_before=["crm"],
-)
+# ── Compilation paresseuse avec checkpoints PostgreSQL ───────────────────────
+
+_pipeline = None
+_pool: AsyncConnectionPool | None = None
+
+
+async def get_pipeline():
+    """Compile le graphe (une seule fois par process) avec des checkpoints
+    PostgreSQL. Le graphe se suspend avant "crm" (HITL) ; une relance avec
+    input=None reprend au checkpoint après validation — y compris après un
+    redémarrage du worker, puisque l'état vit en base (tables checkpoints*)."""
+    global _pipeline, _pool
+    if _pipeline is not None:
+        return _pipeline
+
+    # psycopg attend un DSN "postgresql://", pas le dialecte SQLAlchemy+asyncpg.
+    conninfo = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    # autocommit + dict_row : prérequis documentés d'AsyncPostgresSaver ;
+    # prepare_threshold=0 évite les prepared statements (incompatibles pgbouncer).
+    _pool = AsyncConnectionPool(
+        conninfo=conninfo,
+        min_size=1,
+        max_size=4,
+        open=False,
+        kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
+    )
+    await _pool.open()
+
+    checkpointer = AsyncPostgresSaver(_pool)
+    await checkpointer.setup()  # crée/migre les tables checkpoints* (idempotent)
+
+    _pipeline = _builder.compile(
+        checkpointer=checkpointer,
+        interrupt_before=["crm"],
+    )
+    logger.info("Graphe LangGraph compilé — checkpoints PostgreSQL actifs")
+    return _pipeline
