@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     INPI_USERNAME: str = ""
     INPI_PASSWORD: str = ""
 
+    # Agent Scoring — un lead sans CA réel (None ou 0) est scoré sur un CA imputé
+    # (médiane de sa tranche de taille) : son score doit dépasser le seuil de la
+    # campagne de cette marge pour être auto-qualifié, afin qu'un score en partie
+    # fictif ne prenne pas la place d'un lead à données réelles (voir
+    # app/agents/scoring/decision.py).
+    SCORING_MARGE_SEUIL_SANS_CA: float = 0.10
+    # Marge réduite pour un lead sans CA réel mais avec un résultat net réel et
+    # positif (donnée non fictive, cf. app/agents/scoring/decision.py) : le
+    # risque d'imputation optimiste couvert par la marge pleine est largement
+    # atténué par cette vraie donnée de rentabilité.
+    SCORING_MARGE_SEUIL_SANS_CA_AVEC_RN_POSITIF: float = 0.05
+
     # NVIDIA API (OpenAI-compatible) — Agent Rédaction
     NVIDIA_API_KEY: str = ""
     NVIDIA_BASE_URL: str = "https://integrate.api.nvidia.com/v1"

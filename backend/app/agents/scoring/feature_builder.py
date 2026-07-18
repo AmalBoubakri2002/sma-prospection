@@ -10,6 +10,7 @@ from app.agents.scoring.feature_spec import (
     MARGE_NETTE_CLIP,
     TAILLE_MIDPOINT,
     TAILLE_TO_CODE,
+    ca_median_for_taille,
     clean_financial_value,
     naf_division as _naf_division,
     signed_log1p as _signed_log1p,
@@ -45,7 +46,13 @@ def build_feature_vector(lead: Lead, config: dict) -> np.ndarray:
     lead_rn = lead.resultat_net
 
     # max(0, ...) évite un log1p(NaN) si le CA source est aberrant (négatif).
-    ca: float = max(0.0, float(lead_ca)) if lead_ca is not None else medians["ca"]
+    # CA manquant → médiane de la tranche de taille du lead, pas la médiane
+    # globale (voir feature_spec.ca_median_for_taille).
+    ca: float = (
+        max(0.0, float(lead_ca))
+        if lead_ca is not None
+        else ca_median_for_taille(medians, lead.taille_entreprise)
+    )
     ca_n1: int | None = lead.ca_n1
     rn: int | None = lead_rn
 

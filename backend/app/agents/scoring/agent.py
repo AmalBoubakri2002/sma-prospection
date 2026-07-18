@@ -5,8 +5,8 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.scoring import predictor
+from app.agents.scoring.decision import decide_status, score_ajuste
 from app.models.campaign import Campaign
-from app.models.lead import LeadStatus
 from app.services.lead import list_leads_to_score, update_lead_scored
 
 logger = logging.getLogger("agent-scoring")
@@ -35,10 +35,10 @@ async def run_scoring(db: AsyncSession, campaign: Campaign) -> dict:
         for lead in leads:
             try:
                 score, label, shap_json = predictor.predict(lead)
-                # ECARTE = rejet automatique (score < seuil) ; REJETE est réservé au rejet humain.
-                status = (
-                    LeadStatus.QUALIFIE if round(score, 2) >= round(campaign.score_minimum, 2) else LeadStatus.ECARTE
-                )
+                # Score pénalisé si CA manquant (imputé) — marge réduite si RN réel
+                # positif malgré tout — voir decision.py.
+                score = score_ajuste(score, lead.ca, lead.resultat_net)
+                status = decide_status(score, campaign.score_minimum)
                 await update_lead_scored(db, lead, score, label, status, shap_json)
                 total_scored += 1
                 logger.debug(

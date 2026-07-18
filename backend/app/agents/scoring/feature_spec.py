@@ -58,6 +58,18 @@ def signed_log1p(x: float | None) -> float:
     return math.copysign(math.log1p(abs(x)), x)
 
 
+def ca_median_for_taille(medians: dict, taille: str | None) -> float:
+    """Médiane d'imputation du CA pour un lead sans CA réel : celle de sa tranche
+    de taille (groupe 0=TPE … 4=GE, cf. TAILLE_TO_CODE) plutôt que la médiane
+    globale du dataset — celle-ci (~15,5 M€, suréchantillonnage volontaire des
+    ME/ETI à l'entraînement) faisait passer un lead sans aucune donnée pour une
+    grande entreprise confirmée et le classait au-dessus de leads à CA réel.
+    Retombe sur la médiane globale si le groupe est absent (config ancienne ou
+    groupe trop peu représenté à l'entraînement)."""
+    group = str(TAILLE_TO_CODE.get(str(taille or "NN"), 0))
+    return float(medians.get("ca_par_taille", {}).get(group, medians["ca"]))
+
+
 def clean_financial_value(x: float | int | None) -> float | int | None:
     """Traite un CA EXACTEMENT égal à 0 comme manquant plutôt qu'une vraie valeur nulle :
     c'est très majoritairement un artefact de source (CA jamais récupéré), pas un fait

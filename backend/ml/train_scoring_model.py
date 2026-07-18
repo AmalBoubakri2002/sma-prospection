@@ -79,6 +79,9 @@ def build_features(df: pd.DataFrame, medians: dict | None = None) -> tuple[np.nd
     df = df.copy()
     df["ca"] = df["ca"].replace(0, np.nan)
 
+    taille_str = df["taille_entreprise"].astype(str)
+    taille_code = taille_str.map(TAILLE_TO_CODE).fillna(0).astype(int)
+
     if medians is None:
         ca_median = float(df["ca"].median())
         # ca_n1 est quasi-jamais disponible : retombe sur la médiane de `ca`
@@ -86,9 +89,20 @@ def build_features(df: pd.DataFrame, medians: dict | None = None) -> tuple[np.nd
         ca_n1_median = float(df["ca_n1"].dropna().median())
         if np.isnan(ca_n1_median):
             ca_n1_median = ca_median
+        # Médiane du CA par groupe de taille (0=TPE … 4=GE) : la médiane globale
+        # est biaisée par le suréchantillonnage volontaire des ME/ETI et sur-note
+        # les leads sans CA (voir feature_spec.ca_median_for_taille). Un groupe à
+        # moins de 50 CA connus garde le fallback global (médiane trop bruitée).
+        ca_grouped = df["ca"].groupby(taille_code)
+        ca_par_taille = {
+            str(int(group)): float(med)
+            for group, med in ca_grouped.median().items()
+            if ca_grouped.count()[group] >= 50 and not np.isnan(med)
+        }
         medians = {
             "ca":             ca_median,
             "ca_n1":          ca_n1_median,
+            "ca_par_taille":  ca_par_taille,
             "marge_nette":    float(df["marge_nette"].dropna().median()),
             "age_entreprise": float(df["age_entreprise"].dropna().median()),
         }
@@ -102,7 +116,12 @@ def build_features(df: pd.DataFrame, medians: dict | None = None) -> tuple[np.nd
 
     # clip(lower=0) évite un log1p(NaN) sur des CA négatifs aberrants (erreurs de saisie source).
     a_ca = df["ca"].notna().astype(np.float32)
-    ca = df["ca"].clip(lower=0).fillna(medians["ca"])
+    ca_fill = (
+        taille_code.astype(str)
+        .map(medians.get("ca_par_taille", {}))
+        .fillna(medians["ca"])
+    )
+    ca = df["ca"].clip(lower=0).fillna(ca_fill)
     ca_n1 = df["ca_n1"].clip(lower=0).fillna(medians["ca_n1"])
     a_ca_n1 = df["ca_n1"].notna().astype(np.float32)
 
@@ -116,8 +135,6 @@ def build_features(df: pd.DataFrame, medians: dict | None = None) -> tuple[np.nd
     croissance = df["croissance_ca"].fillna(0.0)
     age = df["age_entreprise"].fillna(medians["age_entreprise"])
 
-    taille_str = df["taille_entreprise"].astype(str)
-    taille_code = taille_str.map(TAILLE_TO_CODE).fillna(0)
     effectif = taille_str.map(TAILLE_MIDPOINT).fillna(TAILLE_MIDPOINT["NN"])
     ca_par_salarie = ca / effectif.clip(lower=1)
 

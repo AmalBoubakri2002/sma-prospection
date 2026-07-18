@@ -2,6 +2,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.agents.scoring.decision import decide_status
 from app.agents.veille.sirene import SireneAPIError, SireneClient, SireneConfigError
 from app.api.deps import require_active_user
 from app.db.base import get_db
@@ -272,7 +273,9 @@ async def requalify(
 
     qualified = rejected = 0
     for lead in leads:
-        new_status = LeadStatus.QUALIFIE if round(lead.score, 2) >= round(threshold, 2) else LeadStatus.ECARTE
+        # Même règle que l'Agent Scoring — voir decision.py. lead.score est déjà
+        # pénalisé pour les leads sans CA réel (score_ajuste, appliqué au scoring).
+        new_status = decide_status(lead.score, threshold)
         if lead.status != new_status:
             lead.status = new_status
             if new_status == LeadStatus.QUALIFIE:

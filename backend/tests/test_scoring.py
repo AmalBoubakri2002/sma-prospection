@@ -19,10 +19,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from app.agents.scoring.decision import decide_status, score_ajuste
 from app.agents.scoring.feature_builder import build_feature_vector
 from app.agents.scoring.feature_spec import FEATURE_NAMES, TAILLE_MIDPOINT, TAILLE_TO_CODE
 from app.agents.scoring.predictor import _prob_to_label
-from app.models.lead import Lead
+from app.core.config import settings
+from app.models.lead import Lead, LeadStatus
 from ml.train_scoring_model import build_features
 
 FEATURE_INDEX = {name: i for i, name in enumerate(FEATURE_NAMES)}
@@ -130,6 +132,44 @@ def test_build_feature_vector_resultat_net_exactly_zero_is_known_value():
     assert vec[0, FEATURE_INDEX["rn_signed_log1p"]] == 0.0
 
 
+def test_build_feature_vector_missing_ca_uses_taille_group_median():
+    """CA manquant → médiane de la TRANCHE DE TAILLE du lead, pas la médiane
+    globale (biaisée ~15,5 M€ par le suréchantillonnage ME/ETI du dataset —
+    cas réel : un lead PE sans CA classé au-dessus d'un lead ME à 12,9 M€
+    de CA réel)."""
+    config = _make_config(ca_par_taille={"1": 1_200_000.0, "2": 8_000_000.0})
+
+    lead_pe = _make_lead(taille_entreprise="12")  # PE → groupe 1
+    vec_pe = build_feature_vector(lead_pe, config)
+    assert vec_pe[0, FEATURE_INDEX["ca_log1p"]] == pytest.approx(math.log1p(1_200_000.0), rel=1e-5)
+    assert vec_pe[0, FEATURE_INDEX["a_ca"]] == 0.0
+
+    lead_me = _make_lead(taille_entreprise="22")  # ME → groupe 2
+    vec_me = build_feature_vector(lead_me, config)
+    assert vec_me[0, FEATURE_INDEX["ca_log1p"]] == pytest.approx(math.log1p(8_000_000.0), rel=1e-5)
+
+    # Groupe absent de ca_par_taille (taille inconnue → groupe 0) → fallback global.
+    lead_nn = _make_lead(taille_entreprise=None)
+    vec_nn = build_feature_vector(lead_nn, config)
+    assert vec_nn[0, FEATURE_INDEX["ca_log1p"]] == pytest.approx(
+        math.log1p(config["medians"]["ca"]), rel=1e-5
+    )
+
+
+def test_build_feature_vector_config_without_ca_par_taille_falls_back_global():
+    """Rétro-compatibilité : une feature_config.json antérieure à l'introduction
+    de ca_par_taille (modèle non réentraîné) doit continuer à fonctionner avec
+    la médiane globale."""
+    lead = _make_lead(taille_entreprise="12")
+    config = _make_config()  # pas de clé ca_par_taille
+
+    vec = build_feature_vector(lead, config)
+
+    assert vec[0, FEATURE_INDEX["ca_log1p"]] == pytest.approx(
+        math.log1p(config["medians"]["ca"]), rel=1e-5
+    )
+
+
 # ── build_feature_vector : données connues → transforms corrects, flags à 1 ────
 
 def test_build_feature_vector_known_financials():
@@ -224,6 +264,95 @@ def test_feature_vector_matches_training_build_features_missing_data():
     vec_train, _ = build_features(df, medians=dict(medians))
 
     np.testing.assert_allclose(vec_inference[0], vec_train[0], rtol=1e-4, atol=1e-4)
+
+
+def test_feature_vector_matches_training_build_features_ca_par_taille():
+    """Parité train/inférence sur le chemin d'imputation PAR TRANCHE DE TAILLE :
+    les deux implémentations doivent piocher la même médiane de groupe pour un
+    CA manquant (et le même fallback global si le groupe est absent)."""
+    medians = _make_config(
+        secteur_categories=["62", "70"],
+        ca_par_taille={"1": 1_200_000.0, "2": 8_000_000.0},
+    )["medians"]
+
+    for taille in ["12", "22", "NN"]:  # groupe présent ×2, groupe absent (0)
+        lead = _make_lead(taille_entreprise=taille, secteur="6202A")
+        vec_inference = build_feature_vector(lead, {"medians": medians})
+
+        df = pd.DataFrame([{
+            "ca": np.nan,
+            "ca_n1": np.nan,
+            "resultat_net": np.nan,
+            "marge_nette": np.nan,
+            "croissance_ca": np.nan,
+            "age_entreprise": np.nan,
+            "taille_entreprise": taille,
+            "secteur": "6202A",
+        }])
+        vec_train, _ = build_features(df, medians=dict(medians))
+
+        np.testing.assert_allclose(
+            vec_inference[0], vec_train[0], rtol=1e-4, atol=1e-4,
+            err_msg=f"désynchronisation train/inférence pour taille={taille}",
+        )
+
+
+# ── score_ajuste / decide_status : malus sur le score pour les leads sans CA réel ──
+
+_MARGE = settings.SCORING_MARGE_SEUIL_SANS_CA
+_MARGE_RN_POSITIF = settings.SCORING_MARGE_SEUIL_SANS_CA_AVEC_RN_POSITIF
+
+
+def test_score_ajuste_ca_reel_inchange():
+    assert score_ajuste(0.65, ca=12_900_000, resultat_net=None) == 0.65
+
+
+def test_score_ajuste_sans_ca_ni_rn_retire_la_marge_pleine():
+    """Cas réel (Slimpay/Ankorstore/Kit United) : aucune donnée financière —
+    score brut au-dessus du seuil de campagne mais reposant sur un CA imputé.
+    Le score affiché doit tomber sous le seuil, pas rester au-dessus avec un
+    seuil caché plus haut."""
+    assert score_ajuste(0.6515, ca=None, resultat_net=None) == pytest.approx(0.6515 - _MARGE)
+
+
+def test_score_ajuste_ca_zero_traite_comme_manquant():
+    """ca=0 est un artefact d'enrichissement (voir clean_financial_value), pas
+    un CA confirmé — la marge pleine s'applique aussi."""
+    assert score_ajuste(0.65, ca=0, resultat_net=None) == pytest.approx(0.65 - _MARGE)
+
+
+def test_score_ajuste_rn_reel_positif_retire_seulement_la_marge_reduite():
+    """Cas réel (Ipsosenso) : CA manquant mais RN réel +1,2M€ — pas un lead
+    "sans finances", un lead à données partielles. La marge doit être réduite,
+    pas pleine."""
+    assert score_ajuste(0.719, ca=None, resultat_net=1_217_739) == pytest.approx(0.719 - _MARGE_RN_POSITIF)
+    assert score_ajuste(0.719, ca=0, resultat_net=1_217_739) == pytest.approx(0.719 - _MARGE_RN_POSITIF)
+
+
+def test_score_ajuste_rn_reel_negatif_garde_la_marge_pleine():
+    """Un RN réel mais négatif n'est pas un signal positif à récompenser — rien
+    ne justifie plus d'indulgence qu'un lead sans aucune donnée."""
+    assert score_ajuste(0.65, ca=None, resultat_net=-238_080) == pytest.approx(0.65 - _MARGE)
+
+
+def test_score_ajuste_rn_zero_nest_pas_traite_comme_positif():
+    """resultat_net=0 est une vraie valeur (contrairement à ca=0, voir
+    clean_financial_value) mais pas un signal positif — marge pleine."""
+    assert score_ajuste(0.65, ca=None, resultat_net=0) == pytest.approx(0.65 - _MARGE)
+
+
+def test_score_ajuste_plancher_a_0():
+    assert score_ajuste(0.05, ca=None, resultat_net=None) == 0.0
+
+
+def test_decide_status_compare_le_score_deja_ajuste():
+    assert decide_status(0.65, 0.65) == LeadStatus.QUALIFIE
+    assert decide_status(0.64, 0.65) == LeadStatus.ECARTE
+    # équivalent bout-en-bout : sans CA réel ni RN réel, 65 % brut n'auto-qualifie plus.
+    assert decide_status(score_ajuste(0.65, ca=None, resultat_net=None), 0.65) == LeadStatus.ECARTE
+    assert decide_status(score_ajuste(0.65 + _MARGE, ca=None, resultat_net=None), 0.65) == LeadStatus.QUALIFIE
+    # avec un RN réel positif, la marge réduite suffit à qualifier plus tôt.
+    assert decide_status(score_ajuste(0.65 + _MARGE_RN_POSITIF, ca=None, resultat_net=1), 0.65) == LeadStatus.QUALIFIE
 
 
 # ── SHAP top 5 : une seule feature par groupe sémantique ────────────────────────
