@@ -1,3 +1,5 @@
+#surveille les 3 événements (lead.won, lead.lost, message.received) en surchargeant write() et message_post(), et envoie le webhook HTTP après le commit de la transaction.
+
 import json
 import logging
 from functools import partial

@@ -21,16 +21,7 @@ __all__ = ["FEATURE_NAMES", "build_feature_vector"]
 
 
 def build_feature_vector(lead: Lead, config: dict) -> np.ndarray:
-    """
-    Transforme un Lead ORM en vecteur numpy (1, 15) prêt pour model.predict().
-
-    Args:
-        lead   : instance Lead SQLAlchemy (doit être en statut ENRICHI)
-        config : contenu de models/feature_config.json
-
-    Returns:
-        X de forme (1, len(FEATURE_NAMES)), dtype float32
-    """
+   
     medians = config["medians"]
     secteur_index: dict[str, int] = {
         c: i for i, c in enumerate(medians["secteur_categories"])
@@ -38,16 +29,9 @@ def build_feature_vector(lead: Lead, config: dict) -> np.ndarray:
 
     today = date.today()
 
-    # ── Financiers ────────────────────────────────────────────────────────────
-    # ca=0 traité comme manquant (symptôme d'un CA jamais récupéré, cf. clean_financial_value).
-    # resultat_net=0 est en revanche une vraie valeur (l'API ne renvoie jamais 0 pour "inconnu") ;
-    # le traiter comme manquant double-pénaliserait les leads à RN nul mais par ailleurs solides.
     lead_ca = clean_financial_value(lead.ca)
     lead_rn = lead.resultat_net
-
-    # max(0, ...) évite un log1p(NaN) si le CA source est aberrant (négatif).
-    # CA manquant → médiane de la tranche de taille du lead, pas la médiane
-    # globale (voir feature_spec.ca_median_for_taille).
+    
     ca: float = (
         max(0.0, float(lead_ca))
         if lead_ca is not None

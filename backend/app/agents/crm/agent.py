@@ -44,10 +44,7 @@ async def run_crm(db: AsyncSession, campaign: Campaign) -> dict:
 
         for lead in leads:
             try:
-                # Filet de sécurité anti-doublon : si la même entreprise (SIRET)
-                # est déjà suivie dans Odoo via une autre campagne, on rattache
-                # le lead à la fiche existante — pas de nouvelle fiche, pas de
-                # nouvel email à un prospect déjà engagé.
+              
                 duplicate_id = await find_crm_duplicate(lead)
                 if duplicate_id is not None:
                     await mark_crm_sync_success(db, lead.id, duplicate_id)

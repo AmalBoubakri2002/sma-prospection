@@ -13,28 +13,14 @@ from app.services.lead import (
 
 
 async def run_veille(db: AsyncSession, campaign: Campaign) -> dict:
-    """Étape 1 du pipeline : collecte SIRENE → normalisation → dédup → stockage.
-    Retourne un résumé ; lève une exception en cas d'échec (gérée par le worker)."""
+    
     existing_sirets = await get_existing_sirets(db, campaign.id)
 
-    # Le quota se mesure aux leads encore "utiles" (count_usable_leads_for_campaign
-    # exclut ceux déjà écartés faute de CA/résultat net), PAS au total brut jamais
-    # collecté — sinon une relance de Veille pour compenser ces pertes (voir
-    # pipeline_graph.py::node_check_quota) se croit systématiquement déjà au
-    # quota et ne collecte jamais rien de plus, puisque len(existing_sirets)
-    # inclut aussi les SIRET déjà écartés. La dédup, elle, reste sur
-    # `existing_sirets` en entier : on ne veut jamais recollecter un SIRET déjà
-    # vu, utile ou non.
     usable_count = await count_usable_leads_for_campaign(db, campaign.id)
     quota_restant = max(campaign.quota - usable_count, 0)
     if quota_restant == 0:
         return {"leads_collected": 0, "raison": "quota déjà atteint"}
 
-    # Dédup inter-campagnes : une entreprise dont un lead est encore actif dans
-    # une autre campagne n'est pas recollectée (sinon doublons Odoo + prospect
-    # recontacté par email). Écartés/rejetés ailleurs restent prospectables.
-    # L'exclusion est passée à SIRENE pour que la pagination avance jusqu'à
-    # trouver des entreprises réellement nouvelles.
     sirets_ailleurs = await get_sirets_prospected_elsewhere(db, campaign.id)
     sirets_bloques = existing_sirets | sirets_ailleurs
 
@@ -47,15 +33,11 @@ async def run_veille(db: AsyncSession, campaign: Campaign) -> dict:
         exclude_sirets=sirets_bloques,
     )
 
-    # Mémorise le plafond réel SIRENE pour l'afficher dans le dashboard.
     if total_sirene and campaign.estimated_prospects != total_sirene:
         campaign.estimated_prospects = total_sirene
         db.add(campaign)
         await db.commit()
 
-    # SIRET valide et NAF actuel dans la cible de la campagne sont déjà garantis
-    # par search_etablissements (filtré pendant la pagination, cf. sirene.py) —
-    # inutile de refiltrer ici.
     normalized = [normalize_etablissement(e) for e in raw_etablissements]
     nouveaux = dedupe(normalized, sirets_bloques)
 

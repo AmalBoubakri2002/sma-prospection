@@ -7,8 +7,6 @@ _LEGAL_FORM_SUFFIXES = re.compile(
 
 
 def normalize_phone(raw: str | None) -> str | None:
-    """SIRENE ne fournit pas de téléphone — utilitaire prêt pour l'Agent
-    Enrichissement, qui produira des numéros à normaliser au format +33XXXXXXXXX."""
     if not raw:
         return None
     digits = re.sub(r"\D", "", raw)
@@ -36,13 +34,7 @@ def _current_periode(etablissement: dict) -> dict:
 
 
 def current_secteur(etablissement: dict, periode: dict | None = None) -> str | None:
-    """NAF réellement en vigueur aujourd'hui, à distinguer du NAF matché par la
-    requête SIRENE (qui accepte tout NAF détenu à un moment de l'historique,
-    voir sirene.py::build_query). Utilisé à la fois pendant la pagination
-    (sirene.py::search_etablissements) et ici pour rester cohérent.
-
-    `periode` optionnel : évite de la recalculer si l'appelant l'a déjà (voir
-    normalize_etablissement)."""
+   
     if periode is None:
         periode = _current_periode(etablissement)
     return periode.get("activitePrincipaleEtablissement") or etablissement.get(

@@ -1,5 +1,3 @@
-#Agent Rédaction — génère un email de prospection par lead QUALIFIE via l'API NVIDIA,puis passe le lead en EN_ATTENTE_VALIDATION.
-
 import asyncio
 import json
 import logging
@@ -13,8 +11,6 @@ from app.models.lead import Lead
 from app.services.lead import list_leads_to_redact, update_lead_email_genere
 
 logger = logging.getLogger("agent-redaction")
-
-# ── Prompt système ─────────────────────────────────────────────────────────────
 
 _SYSTEM_PROMPT = """\
 Tu es un expert en prospection commerciale B2B pour des entreprises françaises.
@@ -54,8 +50,6 @@ Règles de rédaction :
 """
 
 
-# ── Construction du contexte lead ──────────────────────────────────────────────
-
 _TAILLE_LABELS = {
     "NN": "micro-entreprise", "01": "micro-entreprise", "02": "micro-entreprise",
     "03": "micro-entreprise",
@@ -75,7 +69,6 @@ _LABEL_FR = {
 
 
 def _build_context(lead: Lead) -> str:
-    """Transforme les champs Lead en texte de contexte pour le modèle."""
     lines = [f"Entreprise cible : {lead.company_name}"]
 
     if lead.prenom_dirigeant and lead.nom_dirigeant:
@@ -126,7 +119,6 @@ _WORD_COUNT_MAX = 300   # marge haute par rapport aux 250 du prompt
 
 
 def _validate_email(objet: str, contenu: str, lead: Lead) -> list[str]:
-    """Vérifie que l'email respecte les règles métier ; retourne la liste des violations."""
     errors: list[str] = []
 
     # Règle 1 : longueur du corps (avec marges pour éviter les faux positifs)
@@ -157,7 +149,6 @@ def _validate_email(objet: str, contenu: str, lead: Lead) -> list[str]:
 # ── Appel API NVIDIA / Mistral Nemotron ────────────────────────────────────────
 
 async def _generate_email(client: AsyncOpenAI, lead: Lead, model: str) -> tuple[str, str]:
-    """Appelle le modèle de rédaction et retourne (objet, contenu)."""
     context = _build_context(lead)
     user_message = (
         f"Génère un email de prospection pour ce prospect :\n\n{context}\n\n"
@@ -187,9 +178,6 @@ async def _generate_email(client: AsyncOpenAI, lead: Lead, model: str) -> tuple[
         raw = raw.strip()
 
     try:
-        # strict=False : certains modèles (ex. llama-3.1-70b-instruct, utilisé comme
-        # REDACTION_FALLBACK_MODEL) renvoient de vrais retours à la ligne au lieu de
-        # \n échappé dans les chaînes JSON — techniquement invalide en mode strict.
         data = json.loads(raw, strict=False)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Réponse non-JSON reçue du modèle : {raw[:200]}") from exc
@@ -207,22 +195,18 @@ async def _generate_email(client: AsyncOpenAI, lead: Lead, model: str) -> tuple[
 # ── Orchestration principale ───────────────────────────────────────────────────
 
 async def run_redaction(db: AsyncSession, campaign: Campaign) -> dict:
-    """Génère les emails pour tous les leads QUALIFIE de la campagne, par pages de 50."""
     if not settings.NVIDIA_API_KEY:
         raise RuntimeError(
             "NVIDIA_API_KEY non configurée — impossible de lancer l'Agent Rédaction."
         )
 
-    # max_retries=1 : évite de multiplier l'attente si le modèle est en panne (5xx).
+   
     client = AsyncOpenAI(
         base_url=settings.NVIDIA_BASE_URL,
         api_key=settings.NVIDIA_API_KEY,
         timeout=settings.NVIDIA_API_TIMEOUT_SECONDS,
         max_retries=1,
     )
-    # Fermeture systématique : le client garde un pool de connexions HTTPS
-    # ouvert — dans le worker longue durée, chaque campagne en fuyait un
-    # (sockets orphelins, cf. flake « Event loop is closed » dans les tests).
     try:
         return await _redact_campaign(db, campaign, client)
     finally:

@@ -1,5 +1,3 @@
-"""Spécification unique des features du modèle de scoring — source de vérité partagée par l'entraînement (ml/train_scoring_model.py) et l'inférence (feature_builder.py), pour éviter une désynchronisation silencieuse qui fausserait les prédictions."""
-
 import math
 
 TAILLE_TO_CODE: dict[str, int] = {
@@ -33,11 +31,7 @@ FEATURE_NAMES = [
     "marge_nette",     # marge nette winsorisée [-1.5, 1.5], imputée médiane
     "croissance_ca",   # taux de croissance, imputé 0 (absence = inconnu)
     "age_entreprise",  # âge en années, imputé médiane
-    # has_email/has_phone/has_website/has_dirigeant retirés le 2026-07-07 : ce
-    # sont des signaux de contactabilité (voir score_exploitabilite dans
-    # app/agents/enrichissement/shared.py), pas de qualité commerciale — ils
-    # ne doivent plus entraîner le modèle de scoring des leads.
-    "taille_code",     # ordinal 0 (TPE) → 4 (GE)
+       "taille_code",     # ordinal 0 (TPE) → 4 (GE)
     "secteur_code",    # division NAF (2 chiffres) — évite la sparsité du code sous-classe complet
     "ca_par_salarie_log1p",  # CA / effectif représentatif — ratio explicite plutôt
                               # qu'une interaction implicite taille_code × ca_log1p
@@ -59,22 +53,13 @@ def signed_log1p(x: float | None) -> float:
 
 
 def ca_median_for_taille(medians: dict, taille: str | None) -> float:
-    """Médiane d'imputation du CA pour un lead sans CA réel : celle de sa tranche
-    de taille (groupe 0=TPE … 4=GE, cf. TAILLE_TO_CODE) plutôt que la médiane
-    globale du dataset — celle-ci (~15,5 M€, suréchantillonnage volontaire des
-    ME/ETI à l'entraînement) faisait passer un lead sans aucune donnée pour une
-    grande entreprise confirmée et le classait au-dessus de leads à CA réel.
-    Retombe sur la médiane globale si le groupe est absent (config ancienne ou
-    groupe trop peu représenté à l'entraînement)."""
+  
     group = str(TAILLE_TO_CODE.get(str(taille or "NN"), 0))
     return float(medians.get("ca_par_taille", {}).get(group, medians["ca"]))
 
 
 def clean_financial_value(x: float | int | None) -> float | int | None:
-    """Traite un CA EXACTEMENT égal à 0 comme manquant plutôt qu'une vraie valeur nulle :
-    c'est très majoritairement un artefact de source (CA jamais récupéré), pas un fait
-    métier. NE PAS appliquer à resultat_net : contrairement à ca, un resultat_net=0 est
-    toujours une vraie valeur (les sources ne renvoient jamais 0 pour "inconnu")."""
+   
     if x is None:
         return None
     if x == 0:

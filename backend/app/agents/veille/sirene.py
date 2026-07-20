@@ -25,15 +25,6 @@ def _or_group(field: str, values: list[str], period: bool) -> str:
 def build_query(
     codes_naf: list[str], codes_postaux: list[str], tranches_effectifs: list[str]
 ) -> str:
-    # activitePrincipaleEtablissement DOIT passer par periode(...) : contrairement
-    # à codePostalEtablissement/trancheEffectifsEtablissement, l'API Sirene
-    # n'expose ce champ qu'à l'intérieur de periodesEtablissement — une requête
-    # period=False renvoie une 400 "Erreur de syntaxe dans le paramètre q" (testé
-    # en prod le 2026-07-07). Conséquence assumée : periode(...) matche un NAF
-    # détenu à N'IMPORTE QUEL moment de l'historique, pas forcément aujourd'hui —
-    # un établissement reclassé depuis peut matcher sur un ancien NAF. Le filtre
-    # sur le NAF ACTUEL est donc fait en aval, PENDANT la pagination (voir
-    # search_etablissements ci-dessous), pas ici dans la requête elle-même.
     groups = [
         _or_group("activitePrincipaleEtablissement", codes_naf, period=True),
         _or_group("codePostalEtablissement", codes_postaux, period=False),
@@ -44,10 +35,6 @@ def build_query(
 
 
 class SireneClient:
-    """Client pour l'API Sirene (INSEE) — recherche multi-critères d'établissements.
-
-    Auth par clé unique dans le header X-INSEE-Api-Key-Integration (portail-api.insee.fr).
-    """
 
     def __init__(self, api_key: str | None = None, base_url: str | None = None):
         self.api_key = api_key if api_key is not None else settings.INSEE_API_KEY
@@ -61,17 +48,7 @@ class SireneClient:
         quota: int,
         exclude_sirets: set[str] | None = None,
     ) -> tuple[list[dict], int]:
-        """Collecte jusqu'à `quota` établissements NOUVEAUX (hors exclude_sirets).
-
-        L'exclusion ET le filtre NAF actuel s'appliquent PENDANT la pagination :
-        SIRENE renvoie toujours les résultats dans le même ordre, donc filtrer
-        après coup sur une fenêtre de `quota` lignes plafonnait la collecte aux
-        premières entreprises — toutes déjà en prospection ou reclassées hors
-        cible après quelques campagnes, alors que des centaines d'autres
-        attendaient dans les pages suivantes (bug constaté le 2026-07-15 pour
-        l'exclusion : 3 leads livrés sur 9 demandés avec 285 disponibles ; même
-        symptôme observé pour le filtre NAF le 2026-07-18 : 26 livrés sur 30
-        demandés avec 300+ disponibles)."""
+    
         if not self.api_key:
             raise SireneConfigError("INSEE_API_KEY non configurée (voir backend/.env)")
 
