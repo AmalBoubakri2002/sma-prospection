@@ -5,7 +5,7 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.scoring import predictor
-from app.agents.scoring.decision import decide_status, score_ajuste
+from app.agents.scoring.decision import confidence_score, decide_status, label_for_score, score_ajuste
 from app.models.campaign import Campaign
 from app.services.lead import list_leads_to_score, update_lead_scored
 
@@ -34,12 +34,18 @@ async def run_scoring(db: AsyncSession, campaign: Campaign) -> dict:
 
         for lead in leads:
             try:
-                score, label, shap_json = predictor.predict(lead)
-                # Score pénalisé si CA manquant (imputé) — marge réduite si RN réel
-                # positif malgré tout — voir decision.py.
+                score, shap_json = predictor.predict(lead)
+                # Score pénalisé si CA manquant (imputé) — marge graduée selon le
+                # résultat net réel disponible (voir decision.py).
                 score = score_ajuste(score, lead.ca, lead.resultat_net)
+                # Label calculé APRÈS ajustement : sinon un lead sans CA réel peut
+                # afficher un badge CHAUD à côté d'un statut ECARTE.
+                label = label_for_score(score)
                 status = decide_status(score, campaign.score_minimum)
-                await update_lead_scored(db, lead, score, label, status, shap_json)
+                # Part des données financières réelles (vs imputées) derrière ce
+                # score — affiché à côté pour que le commercial pondère sa confiance.
+                confidence = confidence_score(lead.ca, lead.ca_n1, lead.resultat_net)
+                await update_lead_scored(db, lead, score, label, status, shap_json, confidence)
                 total_scored += 1
                 logger.debug(
                     "Lead %s scoré → %.4f (%s) [%s]", lead.siret, score, label, status

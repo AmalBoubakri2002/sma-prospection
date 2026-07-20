@@ -62,6 +62,7 @@ class Lead(Base):
     # Champs remplis par l'Agent Scoring
     score: Mapped[float | None] = mapped_column(Double())
     label_scoring: Mapped[str | None] = mapped_column(String(10))
+    confidence_score: Mapped[float | None] = mapped_column(Double())
     scored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     shap_explication: Mapped[str | None] = mapped_column(Text())
 

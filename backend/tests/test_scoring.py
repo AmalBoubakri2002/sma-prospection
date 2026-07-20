@@ -2,7 +2,7 @@
 c'est le composant où plusieurs bugs silencieux ont déjà été trouvés en prod
 (fuite de label, CA=0 mal nettoyé, seuils Chaud/Tiède/Froid incohérents avec
 l'arrondi d'affichage). Couvre :
-  1. Les seuils de _prob_to_label (bornes exactes ">=")
+  1. Les seuils de label_for_score (bornes exactes ">=")
   2. build_feature_vector avec données financières manquantes (imputation médiane)
   3. build_feature_vector avec données financières connues
   4. Non-régression train/inférence : build_feature_vector (app/) et
@@ -19,10 +19,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.agents.scoring.decision import decide_status, score_ajuste
+from app.agents.scoring.decision import confidence_score, decide_status, label_for_score, score_ajuste
 from app.agents.scoring.feature_builder import build_feature_vector
 from app.agents.scoring.feature_spec import FEATURE_NAMES, TAILLE_MIDPOINT, TAILLE_TO_CODE
-from app.agents.scoring.predictor import _prob_to_label
 from app.core.config import settings
 from app.models.lead import Lead, LeadStatus
 from ml.train_scoring_model import build_features
@@ -60,7 +59,7 @@ def _make_config(**median_overrides) -> dict:
     return {"medians": medians}
 
 
-# ── _prob_to_label : bornes exactes ────────────────────────────────────────────
+# ── label_for_score : bornes exactes ────────────────────────────────────────────
 
 @pytest.mark.parametrize("prob,expected", [
     (0.0,    "HORS_CIBLE"),
@@ -72,7 +71,7 @@ def _make_config(**median_overrides) -> dict:
     (0.75,   "CHAUD"),
     (1.0,    "CHAUD"),
 ])
-def test_prob_to_label_thresholds(prob, expected):
+def test_label_for_score_thresholds(prob, expected):
     """Seuils ">=" : un score de 0.7499 doit rester TIEDE, pas CHAUD.
 
     Le front affiche Math.round(score*100) pour le pourcentage (choix produit
@@ -82,7 +81,7 @@ def test_prob_to_label_thresholds(prob, expected):
     pour que ce léger décalage d'affichage reste le seul écart, sans dérive
     supplémentaire côté seuils.
     """
-    assert _prob_to_label(prob) == expected
+    assert label_for_score(prob) == expected
 
 
 # ── build_feature_vector : données manquantes → imputation médiane, flags à 0 ──
@@ -298,47 +297,69 @@ def test_feature_vector_matches_training_build_features_ca_par_taille():
 
 
 # ── score_ajuste / decide_status : malus sur le score pour les leads sans CA réel ──
+# Marge graduée sur le RN réel (validé équipe métier 2026-07-19, voir decision.py) :
+# TRES_POSITIF (0.03) < POSITIF (0.05) < INCONNU (0.08) < NEGATIF (0.10) < TRES_NEGATIF (0.12)
 
-_MARGE = settings.SCORING_MARGE_SEUIL_SANS_CA
-_MARGE_RN_POSITIF = settings.SCORING_MARGE_SEUIL_SANS_CA_AVEC_RN_POSITIF
+_MARGE_TRES_POSITIF = settings.SCORING_MARGE_SANS_CA_RN_TRES_POSITIF
+_MARGE_POSITIF = settings.SCORING_MARGE_SANS_CA_RN_POSITIF
+_MARGE_INCONNU = settings.SCORING_MARGE_SANS_CA_RN_INCONNU
+_MARGE_NEGATIF = settings.SCORING_MARGE_SANS_CA_RN_NEGATIF
+_MARGE_TRES_NEGATIF = settings.SCORING_MARGE_SANS_CA_RN_TRES_NEGATIF
+_SEUIL_TRES_POSITIF = settings.SCORING_RN_SEUIL_TRES_POSITIF
+_SEUIL_TRES_NEGATIF = settings.SCORING_RN_SEUIL_TRES_NEGATIF
 
 
 def test_score_ajuste_ca_reel_inchange():
     assert score_ajuste(0.65, ca=12_900_000, resultat_net=None) == 0.65
 
 
-def test_score_ajuste_sans_ca_ni_rn_retire_la_marge_pleine():
+def test_score_ajuste_sans_ca_ni_rn_retire_la_marge_inconnue():
     """Cas réel (Slimpay/Ankorstore/Kit United) : aucune donnée financière —
     score brut au-dessus du seuil de campagne mais reposant sur un CA imputé.
-    Le score affiché doit tomber sous le seuil, pas rester au-dessus avec un
-    seuil caché plus haut."""
-    assert score_ajuste(0.6515, ca=None, resultat_net=None) == pytest.approx(0.6515 - _MARGE)
+    RN inconnu (pas confirmé négatif) : marge INCONNU, pas la marge maximale."""
+    assert score_ajuste(0.6515, ca=None, resultat_net=None) == pytest.approx(0.6515 - _MARGE_INCONNU)
 
 
 def test_score_ajuste_ca_zero_traite_comme_manquant():
     """ca=0 est un artefact d'enrichissement (voir clean_financial_value), pas
-    un CA confirmé — la marge pleine s'applique aussi."""
-    assert score_ajuste(0.65, ca=0, resultat_net=None) == pytest.approx(0.65 - _MARGE)
+    un CA confirmé — même palier (RN inconnu) que ca=None."""
+    assert score_ajuste(0.65, ca=0, resultat_net=None) == pytest.approx(0.65 - _MARGE_INCONNU)
 
 
-def test_score_ajuste_rn_reel_positif_retire_seulement_la_marge_reduite():
-    """Cas réel (Ipsosenso) : CA manquant mais RN réel +1,2M€ — pas un lead
-    "sans finances", un lead à données partielles. La marge doit être réduite,
-    pas pleine."""
-    assert score_ajuste(0.719, ca=None, resultat_net=1_217_739) == pytest.approx(0.719 - _MARGE_RN_POSITIF)
-    assert score_ajuste(0.719, ca=0, resultat_net=1_217_739) == pytest.approx(0.719 - _MARGE_RN_POSITIF)
+def test_score_ajuste_rn_tres_positif_retire_la_marge_la_plus_faible():
+    """Cas réel (Ipsosenso) : CA manquant mais RN réel +1,2M€ (> seuil très
+    positif) — pas un lead "sans finances", un lead à données partielles très
+    rentable. La marge doit être la plus faible du barème."""
+    assert score_ajuste(0.719, ca=None, resultat_net=1_217_739) == pytest.approx(0.719 - _MARGE_TRES_POSITIF)
+    assert score_ajuste(0.719, ca=0, resultat_net=1_217_739) == pytest.approx(0.719 - _MARGE_TRES_POSITIF)
 
 
-def test_score_ajuste_rn_reel_negatif_garde_la_marge_pleine():
-    """Un RN réel mais négatif n'est pas un signal positif à récompenser — rien
-    ne justifie plus d'indulgence qu'un lead sans aucune donnée."""
-    assert score_ajuste(0.65, ca=None, resultat_net=-238_080) == pytest.approx(0.65 - _MARGE)
+def test_score_ajuste_rn_positif_modeste_retire_marge_intermediaire():
+    """Un RN positif mais modeste (sous le seuil très positif) ne mérite pas
+    la même indulgence qu'un RN à +1,2M€ — palier intermédiaire, pas le plus bas."""
+    assert score_ajuste(0.65, ca=None, resultat_net=50_000) == pytest.approx(0.65 - _MARGE_POSITIF)
+    # borne haute incluse dans le palier POSITIF, pas TRES_POSITIF.
+    assert score_ajuste(0.65, ca=None, resultat_net=_SEUIL_TRES_POSITIF) == pytest.approx(0.65 - _MARGE_POSITIF)
+
+
+def test_score_ajuste_rn_tres_negatif_retire_la_marge_la_plus_forte():
+    """Un déficit confirmé et significatif (sous le seuil très négatif) court
+    plus de risque qu'un lead sans aucune donnée — marge la plus forte du
+    barème, pas la même que RN inconnu."""
+    assert score_ajuste(0.65, ca=None, resultat_net=-238_080) == pytest.approx(0.65 - _MARGE_TRES_NEGATIF)
+
+
+def test_score_ajuste_rn_negatif_modere_retire_marge_negatif():
+    """Un déficit réel mais modéré (au-dessus du seuil très négatif) reste
+    pénalisé comme avant la granularisation, pas aggravé."""
+    assert score_ajuste(0.65, ca=None, resultat_net=-50_000) == pytest.approx(0.65 - _MARGE_NEGATIF)
 
 
 def test_score_ajuste_rn_zero_nest_pas_traite_comme_positif():
     """resultat_net=0 est une vraie valeur (contrairement à ca=0, voir
-    clean_financial_value) mais pas un signal positif — marge pleine."""
-    assert score_ajuste(0.65, ca=None, resultat_net=0) == pytest.approx(0.65 - _MARGE)
+    clean_financial_value) mais pas un signal positif — palier NEGATIF (borne
+    haute incluse), pas POSITIF."""
+    assert score_ajuste(0.65, ca=None, resultat_net=0) == pytest.approx(0.65 - _MARGE_NEGATIF)
 
 
 def test_score_ajuste_plancher_a_0():
@@ -350,9 +371,35 @@ def test_decide_status_compare_le_score_deja_ajuste():
     assert decide_status(0.64, 0.65) == LeadStatus.ECARTE
     # équivalent bout-en-bout : sans CA réel ni RN réel, 65 % brut n'auto-qualifie plus.
     assert decide_status(score_ajuste(0.65, ca=None, resultat_net=None), 0.65) == LeadStatus.ECARTE
-    assert decide_status(score_ajuste(0.65 + _MARGE, ca=None, resultat_net=None), 0.65) == LeadStatus.QUALIFIE
-    # avec un RN réel positif, la marge réduite suffit à qualifier plus tôt.
-    assert decide_status(score_ajuste(0.65 + _MARGE_RN_POSITIF, ca=None, resultat_net=1), 0.65) == LeadStatus.QUALIFIE
+    assert decide_status(score_ajuste(0.65 + _MARGE_INCONNU, ca=None, resultat_net=None), 0.65) == LeadStatus.QUALIFIE
+    # avec un RN réel positif modeste, la marge intermédiaire suffit à qualifier plus tôt.
+    assert decide_status(score_ajuste(0.65 + _MARGE_POSITIF, ca=None, resultat_net=1), 0.65) == LeadStatus.QUALIFIE
+
+
+# ── confidence_score : part des données financières réelles vs imputées ────────
+
+def test_confidence_score_toutes_donnees_reelles():
+    assert confidence_score(ca=5_000_000, ca_n1=4_000_000, resultat_net=300_000) == 100.0
+
+
+def test_confidence_score_aucune_donnee():
+    assert confidence_score(ca=None, ca_n1=None, resultat_net=None) == 0.0
+
+
+def test_confidence_score_ca_zero_traite_comme_manquant():
+    """Cohérent avec clean_financial_value : ca=0 ne compte pas comme réel."""
+    assert confidence_score(ca=0, ca_n1=None, resultat_net=None) == 0.0
+
+
+def test_confidence_score_ca_et_rn_sans_ca_n1():
+    """CA + RN pèsent chacun 0.4 (blocs dominants du barème), CA N-1 (feature
+    annexe, groupe SHAP "croissance") ne pèse que 0.2 — CA+RN seuls donnent 80,
+    pas 100."""
+    assert confidence_score(ca=5_000_000, ca_n1=None, resultat_net=300_000) == 80.0
+
+
+def test_confidence_score_seulement_ca_n1():
+    assert confidence_score(ca=None, ca_n1=4_000_000, resultat_net=None) == 20.0
 
 
 # ── SHAP top 5 : une seule feature par groupe sémantique ────────────────────────

@@ -53,15 +53,10 @@ async def run_veille(db: AsyncSession, campaign: Campaign) -> dict:
         db.add(campaign)
         await db.commit()
 
+    # SIRET valide et NAF actuel dans la cible de la campagne sont déjà garantis
+    # par search_etablissements (filtré pendant la pagination, cf. sirene.py) —
+    # inutile de refiltrer ici.
     normalized = [normalize_etablissement(e) for e in raw_etablissements]
-    normalized = [lead for lead in normalized if lead["siret"]]
-    # La requête Sirene matche periode(activitePrincipaleEtablissement:...), donc
-    # un établissement reclassé depuis peut matcher sur un NAF qu'il n'a plus —
-    # normalize_etablissement stocke lui le NAF ACTUEL (_current_periode). On
-    # revérifie ici que le NAF stocké est bien dans la cible de la campagne,
-    # pour ne pas garder des leads dont le secteur affiché est hors périmètre
-    # (cf. Aboca S.P.A. en 46.46Z / Numberly en 63.11Z sur une campagne 70.22Z-73.20Z).
-    normalized = [lead for lead in normalized if lead["secteur"] in campaign.codes_naf]
     nouveaux = dedupe(normalized, sirets_bloques)
 
     created = await bulk_create_leads(db, campaign.id, nouveaux)

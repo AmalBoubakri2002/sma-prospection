@@ -13,7 +13,7 @@ import api from "@/utils/api";
 import { useNotifications } from "@/hooks/useNotifications";
 import type { CampaignUpdate, NotificationItem } from "@/hooks/useNotifications";
 import { C, S, R } from "@/styles/tokens";
-import { ScoreBadge, formatCA, formatCaOrUnknown, hasPartialFinancials, type ShapFeature } from "@/components/LeadScoreBadge";
+import { ScoreBadge, formatCA, formatCaOrUnknown, formatDateCreation, hasPartialFinancials, type ShapFeature } from "@/components/LeadScoreBadge";
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -34,6 +34,7 @@ interface Lead {
   titre_dirigeant: string | null;
   ca: number | null;
   resultat_net: number | null;
+  date_creation: string | null;
   score: number | null;
   score_exploitabilite: number | null;
   label_scoring: "CHAUD" | "TIEDE" | "FROID" | "HORS_CIBLE" | null;
@@ -200,6 +201,7 @@ function LeadDrawer({ lead, onClose, onValidate, onSaveEmail }: LeadDrawerProps)
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 16px" }}>
             {lead.secteur && <Row label="Secteur NAF" value={lead.secteur} />}
             {lead.taille_entreprise && <Row label="Taille" value={lead.taille_entreprise} />}
+            {lead.date_creation && <Row label="Date de création" value={formatDateCreation(lead.date_creation)} />}
             {lead.adresse && <Row label="Adresse" value={lead.adresse} />}
             {dirigeant && <Row label="Dirigeant" value={`${lead.titre_dirigeant ? lead.titre_dirigeant + " " : ""}${dirigeant}`} />}
             {lead.email && <Row label="Email" value={lead.email} />}

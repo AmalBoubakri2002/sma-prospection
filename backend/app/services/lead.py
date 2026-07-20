@@ -227,10 +227,12 @@ async def update_lead_scored(
     label: str,
     status: str = LeadStatus.QUALIFIE,
     shap_json: str | None = None,
+    confidence: float | None = None,
 ) -> Lead:
     """Écrit le score XGBoost (+ SHAP) et passe le lead en QUALIFIE ou ECARTE selon le seuil."""
     lead.score = score
     lead.label_scoring = label
+    lead.confidence_score = confidence
     lead.status = status
     lead.scored_at = datetime.now(timezone.utc)
     if shap_json is not None:
@@ -313,54 +315,60 @@ async def update_lead_contacted(db: AsyncSession, lead: Lead) -> Lead:
     return lead
 
 
+# Statuts d'un lead encore "vivant" pour le commercial : ni écarté/rejeté
+# (hors cible), ni déjà résolu côté CRM (répondu/sans réponse).
+_STATUTS_ACTIFS = {
+    LeadStatus.QUALIFIE, LeadStatus.EMAIL_GENERE, LeadStatus.EN_ATTENTE_VALIDATION,
+    LeadStatus.VALIDE, LeadStatus.SYNCHRONISE_CRM, LeadStatus.CONTACTE,
+}
+
+
 async def get_leads_stats(db: AsyncSession, commercial_id: uuid.UUID) -> dict:
-    """Agrégats KPI pour le dashboard commercial."""
+    """Agrégats KPI pour le dashboard commercial — centrés sur l'activité du
+    commercial (backlog à traiter, priorité IA, effort de contact, résultat),
+    et non sur le détail d'une campagne donnée."""
     base = (
-        select(Lead.status, func.count().label("n"), func.avg(Lead.score).label("avg_score"))
+        select(Lead.status, func.count().label("n"))
         .join(Campaign, Campaign.id == Lead.campaign_id)
         .where(Campaign.commercial_id == commercial_id)
         .group_by(Lead.status)
     )
     result = await db.execute(base)
-    rows = result.all()
+    counts: dict[str, int] = {r.status: r.n for r in result.all()}
 
-    counts: dict[str, int] = {r.status: r.n for r in rows}
-    avg_scores: dict[str, float | None] = {r.status: r.avg_score for r in rows}
+    # Leads à traiter : emails générés en attente d'une décision du commercial.
+    leads_a_traiter = counts.get(LeadStatus.EN_ATTENTE_VALIDATION, 0)
 
-    leads_a_valider = counts.get(LeadStatus.EN_ATTENTE_VALIDATION, 0)
-    emails_en_attente = counts.get(LeadStatus.EN_ATTENTE_VALIDATION, 0)
-    nb_valide = counts.get(LeadStatus.VALIDE, 0)
-    nb_ecarte = counts.get(LeadStatus.ECARTE, 0)      # rejet automatique (scoring < seuil)
-    nb_rejete = counts.get(LeadStatus.REJETE, 0)      # rejet humain explicite
-    nb_qualifie = counts.get(LeadStatus.QUALIFIE, 0)
-    # nb_reviewed_scoring = sortie directe du scoring (QUALIFIE + ECARTE)
-    nb_reviewed_scoring = nb_qualifie + nb_ecarte
-    # nb_scored = tous les leads ayant un score XGBoost (scoring → email → validation)
-    nb_scored = nb_reviewed_scoring + leads_a_valider + nb_valide + nb_rejete
-
-    # taux_validation = taux d'acceptation des emails par le commercial (décisions humaines uniquement)
-    taux_validation = round(nb_valide / (nb_valide + nb_rejete) * 100, 1) if (nb_valide + nb_rejete) > 0 else None
-    # taux_modification = % des leads scorés encore en phase scoring (pas encore en validation ni validés)
-    taux_modification = round(nb_reviewed_scoring / nb_scored * 100, 1) if nb_scored > 0 else None
-
-    # Score moyen sur tous les leads ayant un score XGBoost
-    scored_statuses = {LeadStatus.QUALIFIE, LeadStatus.ECARTE, LeadStatus.REJETE,
-                       LeadStatus.EN_ATTENTE_VALIDATION, LeadStatus.VALIDE}
-    total_with_score = sum(counts.get(s, 0) for s in scored_statuses)
-    if total_with_score > 0:
-        weighted = sum(
-            (avg_scores.get(s) or 0) * counts.get(s, 0) for s in scored_statuses
+    # Leads à fort potentiel : label CHAUD parmi les leads encore actifs — ce que
+    # l'IA recommande de prioriser, indépendamment de l'étape où ils se trouvent.
+    fort_potentiel_query = (
+        select(func.count())
+        .select_from(Lead)
+        .join(Campaign, Campaign.id == Lead.campaign_id)
+        .where(
+            Campaign.commercial_id == commercial_id,
+            Lead.label_scoring == "CHAUD",
+            Lead.status.in_(_STATUTS_ACTIFS),
         )
-        score_moyen: float | None = round(weighted / total_with_score, 3)
-    else:
-        score_moyen = None
+    )
+    leads_fort_potentiel = (await db.execute(fort_potentiel_query)).scalar_one()
+
+    # Leads contactés : tout lead pour lequel un email de prospection a été
+    # envoyé via le CRM, quel que soit le résultat (répondu, sans réponse, ou
+    # encore en attente de réponse).
+    nb_contacte = counts.get(LeadStatus.CONTACTE, 0)
+    nb_repondu = counts.get(LeadStatus.REPONDU, 0)
+    nb_sans_reponse = counts.get(LeadStatus.SANS_REPONSE, 0)
+    leads_contactes = nb_contacte + nb_repondu + nb_sans_reponse
+
+    # Taux de réponse : part des leads contactés ayant effectivement répondu.
+    taux_reponse = round(nb_repondu / leads_contactes * 100, 1) if leads_contactes > 0 else None
 
     return {
-        "leads_a_valider": leads_a_valider,
-        "emails_en_attente": emails_en_attente,
-        "taux_validation": taux_validation,
-        "taux_modification": taux_modification,
-        "score_moyen": score_moyen,
+        "leads_a_traiter": leads_a_traiter,
+        "leads_fort_potentiel": leads_fort_potentiel,
+        "leads_contactes": leads_contactes,
+        "taux_reponse": taux_reponse,
     }
 
 

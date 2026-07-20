@@ -37,11 +37,10 @@ class LeadEmailUpdate(BaseModel):
 
 
 class LeadStatsResponse(BaseModel):
-    leads_a_valider: int
-    emails_en_attente: int
-    taux_validation: float | None
-    taux_modification: float | None
-    score_moyen: float | None
+    leads_a_traiter: int
+    leads_fort_potentiel: int
+    leads_contactes: int
+    taux_reponse: float | None
 
 
 async def _get_owned_lead(db: AsyncSession, lead_id: uuid.UUID, commercial_id: uuid.UUID) -> Lead | None:

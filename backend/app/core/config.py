@@ -60,15 +60,37 @@ class Settings(BaseSettings):
 
     # Agent Scoring — un lead sans CA réel (None ou 0) est scoré sur un CA imputé
     # (médiane de sa tranche de taille) : son score doit dépasser le seuil de la
-    # campagne de cette marge pour être auto-qualifié, afin qu'un score en partie
+    # campagne d'une marge pour être auto-qualifié, afin qu'un score en partie
     # fictif ne prenne pas la place d'un lead à données réelles (voir
-    # app/agents/scoring/decision.py).
-    SCORING_MARGE_SEUIL_SANS_CA: float = 0.10
-    # Marge réduite pour un lead sans CA réel mais avec un résultat net réel et
-    # positif (donnée non fictive, cf. app/agents/scoring/decision.py) : le
-    # risque d'imputation optimiste couvert par la marge pleine est largement
-    # atténué par cette vraie donnée de rentabilité.
-    SCORING_MARGE_SEUIL_SANS_CA_AVEC_RN_POSITIF: float = 0.05
+    # app/agents/scoring/decision.py). Marge graduée sur le résultat net réel
+    # (validé équipe métier 2026-07-19), paliers ci-dessous.
+    SCORING_RN_SEUIL_TRES_POSITIF: float = 500_000.0
+    SCORING_RN_SEUIL_TRES_NEGATIF: float = -100_000.0
+    SCORING_MARGE_SANS_CA_RN_TRES_POSITIF: float = 0.03   # RN > seuil très positif
+    SCORING_MARGE_SANS_CA_RN_POSITIF: float = 0.05        # 0 < RN <= seuil très positif
+    SCORING_MARGE_SANS_CA_RN_INCONNU: float = 0.08        # RN non disponible — pas confirmé mauvais
+    SCORING_MARGE_SANS_CA_RN_NEGATIF: float = 0.10        # seuil très négatif <= RN <= 0
+    SCORING_MARGE_SANS_CA_RN_TRES_NEGATIF: float = 0.12   # RN < seuil très négatif
+
+    @model_validator(mode="after")
+    def check_scoring_marges_rn(self) -> "Settings":
+        if self.SCORING_RN_SEUIL_TRES_NEGATIF >= self.SCORING_RN_SEUIL_TRES_POSITIF:
+            raise ValueError(
+                "SCORING_RN_SEUIL_TRES_NEGATIF doit être < SCORING_RN_SEUIL_TRES_POSITIF."
+            )
+        marges_croissantes = [
+            self.SCORING_MARGE_SANS_CA_RN_TRES_POSITIF,
+            self.SCORING_MARGE_SANS_CA_RN_POSITIF,
+            self.SCORING_MARGE_SANS_CA_RN_INCONNU,
+            self.SCORING_MARGE_SANS_CA_RN_NEGATIF,
+            self.SCORING_MARGE_SANS_CA_RN_TRES_NEGATIF,
+        ]
+        if marges_croissantes != sorted(marges_croissantes):
+            raise ValueError(
+                "Les marges SCORING_MARGE_SANS_CA_RN_* doivent croître "
+                "TRES_POSITIF < POSITIF < INCONNU < NEGATIF < TRES_NEGATIF."
+            )
+        return self
 
     # NVIDIA API (OpenAI-compatible) — Agent Rédaction
     NVIDIA_API_KEY: str = ""

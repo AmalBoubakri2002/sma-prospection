@@ -24,10 +24,10 @@ reprise automatique des tâches bloquées par `orchestrateur.py` :
 Veille → Enrichissement → Check quota → Scoring → Rédaction → [validation commerciale] → CRM
 ```
 
-- **Veille** — recherche d'entreprises cibles (API SIRENE)
+- **Veille** — recherche d'entreprises cibles (API SIRENE), filtrées sur leur secteur NAF actuellement en vigueur
 - **Enrichissement** — BODACC, INPI, recherche d'entreprises, scraping email/téléphone, géocodage
-- **Scoring** — régression XGBoost sur les leads, label (`HORS_CIBLE`/`FROID`/`TIEDE`/`CHAUD`)
-- **Rédaction** — génération d'emails personnalisés (API NVIDIA), avec file de validation humaine (HITL) avant envoi
+- **Scoring** — régression XGBoost sur les leads, label (`HORS_CIBLE`/`FROID`/`TIEDE`/`CHAUD`) et score de confiance (0-100) sur la part de données financières réelles vs imputées derrière le score
+- **Rédaction** — génération d'emails personnalisés (API NVIDIA), avec file de validation humaine (HITL) avant envoi. Auto-déclenchée dès qu'un lead passe `QUALIFIE`, y compris hors pipeline (requalification manuelle après baisse de seuil, override commercial)
 - **CRM** — synchronisation des leads validés vers Odoo (stage, vendeur assigné, historique email dans le chatter), puis **envoi effectif de l'email de prospection** via le module mail d'Odoo (lead → `CONTACTE`). En dev, les emails sont capturés par **Mailpit** (`http://localhost:8025`) — aucun prospect réel n'est contacté. Désactivable via `ODOO_SEND_EMAILS=false`.
 
 L'état du graphe est persisté dans PostgreSQL (`AsyncPostgresSaver`, tables
@@ -68,7 +68,7 @@ Sans secret configuré côté backend, l'endpoint répond 503 (fermé par défau
 - CRUD commerciaux (admin)
 - Dashboard admin (stats équipe)
 - Dashboard commercial (KPIs, campagnes)
-- Création et suivi de campagnes (UI + file de validation des leads/emails)
+- Création et suivi de campagnes (UI + file de validation des leads/emails), avec estimation du vivier de prospects disponibles avant lancement (`GET /campaigns/estimate`)
 - Pipeline complet Veille → Enrichissement → Scoring → Rédaction → CRM (LangGraph)
 - Intégration CRM Odoo 17 (stage, vendeur, historique)
 - Boucle retour CRM : webhooks Odoo (gagné / perdu / réponse email) → statuts `REPONDU` / `SANS_REPONSE` + notification du commercial

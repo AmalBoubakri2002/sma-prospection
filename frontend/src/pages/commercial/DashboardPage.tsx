@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Typography, Button, Tag, Spin, Badge } from "antd";
 import {
-  CheckCircleOutlined, PercentageOutlined, EditOutlined, StarOutlined,
+  AimOutlined, StarOutlined, PhoneOutlined, MailOutlined,
   PlusOutlined, RocketOutlined, ClockCircleOutlined, LockOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
@@ -11,6 +11,7 @@ import { useNotifications } from "@/hooks/useNotifications";
 import type { NotificationItem } from "@/hooks/useNotifications";
 import api from "@/utils/api";
 import { C, S, R } from "@/styles/tokens";
+import { KpiCard } from "@/components/KpiCard";
 
 function displayFirstName(user: AuthUser | null): string {
   if (!user) return "Commercial";
@@ -31,11 +32,10 @@ interface Campaign {
 }
 
 interface LeadStats {
-  leads_a_valider: number;
-  emails_en_attente: number;
-  taux_validation: number | null;
-  taux_modification: number | null;
-  score_moyen: number | null;
+  leads_a_traiter: number;
+  leads_fort_potentiel: number;
+  leads_contactes: number;
+  taux_reponse: number | null;
 }
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -62,44 +62,6 @@ const LEADS_VIEWABLE_STATUSES = new Set([
 ]);
 
 const { Title, Text } = Typography;
-
-interface KpiCardProps {
-  icon:       React.ReactNode;
-  label:      string;
-  value:      string | number;
-  accent:     string;
-  iconBg:     string;
-  iconColor:  string;
-}
-
-function KpiCard({ icon, label, value, accent, iconBg, iconColor }: KpiCardProps) {
-  return (
-    <div style={{
-      background:   C.surface,
-      borderRadius: R.card,
-      border:       `1px solid ${C.border}`,
-      boxShadow:    S.card,
-      flex:         1,
-      minWidth:     160,
-      overflow:     "hidden",
-    }}>
-      <div style={{ height: 3, background: accent }} />
-      <div style={{ padding: "18px 20px", display: "flex", alignItems: "center", gap: 14 }}>
-        <div style={{
-          width: 42, height: 42, borderRadius: R.lg,
-          background: iconBg, display: "flex", alignItems: "center",
-          justifyContent: "center", fontSize: 18, color: iconColor, flexShrink: 0,
-        }}>
-          {icon}
-        </div>
-        <div>
-          <div style={{ fontSize: 26, fontWeight: 800, color: C.navy, lineHeight: 1 }}>{value}</div>
-          <div style={{ fontSize: 13, color: C.textMuted, marginTop: 3 }}>{label}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function CommercialDashboardPage() {
   const navigate  = useNavigate();
@@ -229,34 +191,32 @@ export default function CommercialDashboardPage() {
           {/* ── KPI cards ─────────────────────────────────────────── */}
           <div style={{ display:"flex", gap:14, flexWrap:"wrap", marginBottom:28 }}>
             <KpiCard
-              icon={<CheckCircleOutlined />}
-              label="Leads à valider (scoring)"
-              value={stats ? stats.leads_a_valider : "—"}
+              icon={
+                <Badge count={stats?.leads_a_traiter ?? 0} size="small" offset={[6, -4]}>
+                  <AimOutlined />
+                </Badge>
+              }
+              label="Leads à traiter"
+              value={stats ? stats.leads_a_traiter : "—"}
               accent={C.indigo} iconBg="#eef2ff" iconColor={C.indigo}
             />
             <KpiCard
-              icon={
-                <Badge count={stats?.emails_en_attente ?? 0} size="small" offset={[6, -4]}>
-                  <EditOutlined />
-                </Badge>
-              }
-              label="Emails en attente de validation"
-              value={stats ? stats.emails_en_attente : "—"}
-              accent={C.amber} iconBg={C.amberBg} iconColor={C.amber}
-            />
-            <KpiCard
-              icon={<PercentageOutlined />}
-              label="Taux de validation emails"
-              value={stats?.taux_validation != null ? `${stats.taux_validation}%` : "—"}
-              accent={C.green} iconBg={C.greenBg} iconColor={C.green}
-            />
-            <KpiCard
               icon={<StarOutlined />}
-              label="Score moyen des leads"
-              value={stats?.score_moyen != null
-                ? Number((stats.score_moyen * 100).toFixed(1))
-                : "—"}
-              accent="#7c3aed" iconBg="#f3f0ff" iconColor="#7c3aed"
+              label="Leads à fort potentiel"
+              value={stats ? stats.leads_fort_potentiel : "—"}
+              accent={C.red} iconBg={C.redBg} iconColor={C.red}
+            />
+            <KpiCard
+              icon={<PhoneOutlined />}
+              label="Leads contactés"
+              value={stats ? stats.leads_contactes : "—"}
+              accent={C.cyan} iconBg={C.cyanBg} iconColor={C.cyan}
+            />
+            <KpiCard
+              icon={<MailOutlined />}
+              label="Taux de réponse"
+              value={stats?.taux_reponse != null ? `${stats.taux_reponse}%` : "—"}
+              accent={C.green} iconBg={C.greenBg} iconColor={C.green}
             />
           </div>
 

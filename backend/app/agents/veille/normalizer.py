@@ -35,6 +35,21 @@ def _current_periode(etablissement: dict) -> dict:
     return periodes[0] if periodes else {}
 
 
+def current_secteur(etablissement: dict, periode: dict | None = None) -> str | None:
+    """NAF réellement en vigueur aujourd'hui, à distinguer du NAF matché par la
+    requête SIRENE (qui accepte tout NAF détenu à un moment de l'historique,
+    voir sirene.py::build_query). Utilisé à la fois pendant la pagination
+    (sirene.py::search_etablissements) et ici pour rester cohérent.
+
+    `periode` optionnel : évite de la recalculer si l'appelant l'a déjà (voir
+    normalize_etablissement)."""
+    if periode is None:
+        periode = _current_periode(etablissement)
+    return periode.get("activitePrincipaleEtablissement") or etablissement.get(
+        "activitePrincipaleRegistreMetiersEtablissement"
+    )
+
+
 def build_address(etablissement: dict) -> str | None:
     adresse = etablissement.get("adresseEtablissement") or {}
     voie_parts = [
@@ -91,9 +106,7 @@ def normalize_etablissement(etablissement: dict) -> dict:
     pour être complétés plus tard par l'Agent Enrichissement."""
     periode = _current_periode(etablissement)
 
-    secteur = periode.get("activitePrincipaleEtablissement") or etablissement.get(
-        "activitePrincipaleRegistreMetiersEtablissement"
-    )
+    secteur = current_secteur(etablissement, periode)
     taille_entreprise = etablissement.get("trancheEffectifsEtablissement") or periode.get(
         "trancheEffectifsEtablissement"
     )

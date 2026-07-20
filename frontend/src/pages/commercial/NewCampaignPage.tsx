@@ -48,6 +48,8 @@ const TRANCHES = [
   { value: "42", label: "1 000–1 999" },
 ];
 
+const NAF_REGEX = /^\d{2}\.\d{2}[A-Za-z]$/;
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getTranchesLabel(selected: string[]): string {
@@ -148,6 +150,15 @@ export default function NewCampaignPage() {
 
   const toggle = (list: string[], val: string, set: (v: string[]) => void) =>
     set(list.includes(val) ? list.filter(v => v !== val) : [...list, val]);
+
+  const handleNafChange = (values: string[]) => {
+    const normalized = values.map(v => v.trim().toUpperCase());
+    const valid = [...new Set(normalized.filter(v => NAF_REGEX.test(v)))];
+    if (normalized.some(v => !NAF_REGEX.test(v))) {
+      message.warning("Format de code NAF invalide (attendu : 12.34Z) — code ignoré.");
+    }
+    setCodesNaf(valid);
+  };
 
   const addCodePostal = () => {
     const cp = cpInput.trim();
@@ -255,19 +266,21 @@ export default function NewCampaignPage() {
               Codes NAF / APE
             </Text>
             <Select
-              mode="multiple"
+              mode="tags"
               allowClear
               style={{ width: "100%" }}
               size="large"
-              placeholder="Rechercher un code NAF…"
+              placeholder="Rechercher ou saisir un code NAF (ex : 28.99Z)…"
               value={codesNaf}
-              onChange={setCodesNaf}
+              onChange={handleNafChange}
               options={NAF_CODES}
               optionFilterProp="label"
               showSearch
+              tokenSeparators={[",", " "]}
             />
             <Text style={{ fontSize: 12, color: C.textFaint, marginTop: 6, display: "block" }}>
-              Source : champ <code>activitePrincipaleUniteLegale</code> — API SIRENE
+              Source : champ <code>activitePrincipaleUniteLegale</code> — API SIRENE. Tout code au format
+              12.34Z est accepté, même hors liste suggérée.
             </Text>
           </div>
 

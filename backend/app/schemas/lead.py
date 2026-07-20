@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel
 
@@ -21,12 +21,14 @@ class LeadResponse(BaseModel):
     ca: int | None
     ca_n1: int | None
     resultat_net: int | None
+    date_creation: date | None
     score_exploitabilite: float | None
     latitude: float | None
     longitude: float | None
     # Champs scoring
     score: float | None
     label_scoring: str | None
+    confidence_score: float | None
     scored_at: datetime | None
     shap_explication: str | None
     # Champs rédaction

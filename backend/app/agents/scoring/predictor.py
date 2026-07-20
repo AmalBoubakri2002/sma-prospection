@@ -98,16 +98,6 @@ def _load() -> None:
     logger.info("Modèle XGBoost (régression) chargé depuis %s", model_path)
 
 
-def _prob_to_label(prob: float) -> str:
-    if prob >= 0.75:
-        return "CHAUD"
-    if prob >= 0.50:
-        return "TIEDE"
-    if prob >= 0.30:
-        return "FROID"
-    return "HORS_CIBLE"
-
-
 # Une feature dont la contribution pèse moins de 5% du total |contributions| est
 # considérée comme du bruit statistique plutôt qu'un vrai facteur explicatif (ex:
 # secteur_code sur un lead dont le NAF est déjà fixé par le filtre de campagne) —
@@ -155,8 +145,11 @@ def _compute_shap(X: np.ndarray, feature_names: list[str]) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
-def predict(lead: Lead) -> tuple[float, str, str | None]:
-    """Retourne (score, label, shap_json) pour un lead.
+def predict(lead: Lead) -> tuple[float, str | None]:
+    """Retourne (score, shap_json) pour un lead — score brut du modèle, avant
+    ajustement métier (score_ajuste) et label (label_for_score), tous deux
+    calculés en aval sur le score déjà ajusté (voir agent.py) pour éviter
+    qu'un label CHAUD/TIEDE ne reste calé sur une valeur pré-ajustement.
 
     Le score renvoyé est calibré (isotonic regression, voir _load) quand un
     calibrateur est disponible — le SHAP reste calculé sur la sortie brute du
@@ -173,4 +166,4 @@ def predict(lead: Lead) -> tuple[float, str, str | None]:
     except Exception as exc:
         logger.warning("SHAP non calculé pour %s : %s", lead.siret, exc)
         shap_json = None
-    return round(prob, 4), _prob_to_label(prob), shap_json
+    return round(prob, 4), shap_json

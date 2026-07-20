@@ -1,5 +1,6 @@
 import asyncio
 import httpx
+from app.agents.veille.normalizer import current_secteur
 from app.core.config import settings
 
 class SireneAPIError(Exception):
@@ -31,8 +32,8 @@ def build_query(
     # en prod le 2026-07-07). Conséquence assumée : periode(...) matche un NAF
     # détenu à N'IMPORTE QUEL moment de l'historique, pas forcément aujourd'hui —
     # un établissement reclassé depuis peut matcher sur un ancien NAF. Le filtre
-    # sur le NAF ACTUEL est donc fait en aval, sur le résultat déjà reçu (voir
-    # agent.py::run_veille), pas ici dans la requête.
+    # sur le NAF ACTUEL est donc fait en aval, PENDANT la pagination (voir
+    # search_etablissements ci-dessous), pas ici dans la requête elle-même.
     groups = [
         _or_group("activitePrincipaleEtablissement", codes_naf, period=True),
         _or_group("codePostalEtablissement", codes_postaux, period=False),
@@ -62,16 +63,20 @@ class SireneClient:
     ) -> tuple[list[dict], int]:
         """Collecte jusqu'à `quota` établissements NOUVEAUX (hors exclude_sirets).
 
-        L'exclusion s'applique PENDANT la pagination : SIRENE renvoie toujours
-        les résultats dans le même ordre, donc filtrer après coup sur une fenêtre
-        de `quota` lignes plafonnait la collecte aux premières entreprises —
-        toutes déjà en prospection après quelques campagnes, alors que des
-        centaines d'autres attendaient dans les pages suivantes (bug constaté
-        le 2026-07-15 : 3 leads livrés sur 9 demandés avec 285 disponibles)."""
+        L'exclusion ET le filtre NAF actuel s'appliquent PENDANT la pagination :
+        SIRENE renvoie toujours les résultats dans le même ordre, donc filtrer
+        après coup sur une fenêtre de `quota` lignes plafonnait la collecte aux
+        premières entreprises — toutes déjà en prospection ou reclassées hors
+        cible après quelques campagnes, alors que des centaines d'autres
+        attendaient dans les pages suivantes (bug constaté le 2026-07-15 pour
+        l'exclusion : 3 leads livrés sur 9 demandés avec 285 disponibles ; même
+        symptôme observé pour le filtre NAF le 2026-07-18 : 26 livrés sur 30
+        demandés avec 300+ disponibles)."""
         if not self.api_key:
             raise SireneConfigError("INSEE_API_KEY non configurée (voir backend/.env)")
 
         exclude = exclude_sirets or set()
+        naf_cibles = set(codes_naf)
         query = build_query(codes_naf, codes_postaux, tranches_effectifs)
         page_size = settings.SIRENE_PAGE_SIZE
         results: list[dict] = []
@@ -105,7 +110,9 @@ class SireneClient:
 
                 for etab in etablissements:
                     siret = etab.get("siret", "")
-                    if siret and (siret in exclude or siret in seen):
+                    if not siret or siret in exclude or siret in seen:
+                        continue
+                    if current_secteur(etab) not in naf_cibles:
                         continue
                     seen.add(siret)
                     results.append(etab)

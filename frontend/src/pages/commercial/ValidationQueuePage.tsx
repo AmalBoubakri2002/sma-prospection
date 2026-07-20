@@ -8,7 +8,7 @@ import api from "@/utils/api";
 import { useNotifications } from "@/hooks/useNotifications";
 import type { NotificationItem } from "@/hooks/useNotifications";
 import { C, S, R } from "@/styles/tokens";
-import { ScoreBadge, LABEL_CONFIG, formatCA, hasPartialFinancials, type ShapFeature } from "@/components/LeadScoreBadge";
+import { ScoreBadge, LABEL_CONFIG, formatCA, formatDateCreation, hasPartialFinancials, type ShapFeature } from "@/components/LeadScoreBadge";
 
 const { Text, Title } = Typography;
 const { TextArea } = Input;
@@ -31,6 +31,7 @@ interface Lead {
   titre_dirigeant:     string | null;
   ca:                  number | null;
   resultat_net:        number | null;
+  date_creation:       string | null;
   score:               number | null;
   label_scoring:       "CHAUD" | "TIEDE" | "FROID" | "HORS_CIBLE" | null;
   objet_email:         string | null;
@@ -235,6 +236,7 @@ function LeadDetailDrawer({
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" }}>
             {lead.secteur          && <InfoRow label="Secteur NAF" value={lead.secteur} />}
             {lead.taille_entreprise && <InfoRow label="Taille"      value={lead.taille_entreprise} />}
+            {lead.date_creation    && <InfoRow label="Date de création" value={formatDateCreation(lead.date_creation)} />}
             {dirigeant             && <InfoRow label="Dirigeant"   value={dirigeant} />}
             {lead.email            && <InfoRow label="Email"        value={lead.email} />}
             {lead.telephone        && <InfoRow label="Téléphone"    value={lead.telephone} />}

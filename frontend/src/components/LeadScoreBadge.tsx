@@ -42,6 +42,17 @@ export function hasPartialFinancials(ca: number | null, resultatNet: number | nu
   return ca === null || ca === 0 || resultatNet === null;
 }
 
+// Âge en années (floor(jours/365.25)) : même calcul que le feature "age_entreprise"
+// côté scoring (feature_builder.py), pour que la valeur affichée explique le
+// facteur SHAP "Ancienneté entreprise".
+export function formatDateCreation(dateCreation: string | null): string {
+  if (!dateCreation) return "—";
+  const d = new Date(dateCreation);
+  if (isNaN(d.getTime())) return "—";
+  const ageAns = Math.floor((Date.now() - d.getTime()) / (365.25 * 24 * 3600 * 1000));
+  return `${d.toLocaleDateString("fr-FR")} (${ageAns} an${ageAns > 1 ? "s" : ""})`;
+}
+
 type ScoreBadgeVariant = "default" | "queue";
 
 const SCORE_BADGE_STYLES: Record<
@@ -63,8 +74,9 @@ export function ScoreBadge({
 }) {
   if (score === null || !label) return <Text style={{ color: C.textFaint }}>—</Text>;
   const cfg = LABEL_CONFIG[label];
-  // Arrondi (pas floor) : le label est décidé sur le score non arrondi (predictor.py),
-  // donc un % affiché peut occasionnellement sembler contredire le badge près d'un seuil.
+  // Arrondi (pas floor) : le label est décidé sur le score ajusté non arrondi
+  // (decision.py::label_for_score, appliqué après score_ajuste), donc un %
+  // affiché peut occasionnellement sembler contredire le badge près d'un seuil.
   const pct = Math.round(score * 100);
   const s = SCORE_BADGE_STYLES[variant];
   return (
