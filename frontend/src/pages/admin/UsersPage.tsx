@@ -319,11 +319,6 @@ export default function UsersPage() {
               <Text style={{ color: C.textMuted, fontSize: 14 }}>
                 {search ? "Aucun résultat pour cette recherche" : "Aucun commercial pour l'instant"}
               </Text>
-              {!search && (
-                <Button type="primary" icon={<PlusOutlined />} style={{ marginTop: 16 }} onClick={() => setCreateOpen(true)}>
-                  Créer le premier compte
-                </Button>
-              )}
             </div>
           )}}
           style={{ borderRadius: 0 }}
