@@ -12,6 +12,7 @@ import NewCampaignPage from "@/pages/commercial/NewCampaignPage";
 import ProfilePage from "@/pages/commercial/ProfilePage";
 import CampaignLeadsPage from "@/pages/commercial/CampaignLeadsPage";
 import ValidationQueuePage from "@/pages/commercial/ValidationQueuePage";
+import MetricsPage from "@/pages/commercial/MetricsPage";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import RequireActiveAccount from "@/components/RequireActiveAccount";
 
@@ -63,6 +64,14 @@ export default function App() {
           element={
             <RequireActiveAccount>
               <ValidationQueuePage />
+            </RequireActiveAccount>
+          }
+        />
+        <Route
+          path="performance"
+          element={
+            <RequireActiveAccount>
+              <MetricsPage />
             </RequireActiveAccount>
           }
         />

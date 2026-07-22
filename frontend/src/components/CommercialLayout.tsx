@@ -8,6 +8,7 @@ import {
   UserOutlined,
   DownOutlined,
   MailOutlined,
+  BarChartOutlined,
 } from "@ant-design/icons";
 import { useAuthStore } from "@/stores/authStore";
 import NotificationBell from "@/components/NotificationBell";
@@ -29,8 +30,9 @@ function getNavItems(isActive: boolean): NavItem[] {
   ];
   if (isActive) {
     items.push(
-      { key: "campagnes",  label: "Campagnes",  icon: <RocketOutlined />, path: "/commercial/campagnes/nouvelle" },
-      { key: "validation", label: "Validation", icon: <MailOutlined />,   path: "/commercial/validation" },
+      { key: "campagnes",   label: "Campagnes",   icon: <RocketOutlined />,   path: "/commercial/campagnes/nouvelle" },
+      { key: "validation",  label: "Validation",  icon: <MailOutlined />,     path: "/commercial/validation" },
+      { key: "performance", label: "Performance", icon: <BarChartOutlined />, path: "/commercial/performance" },
     );
   }
   items.push({ key: "profil", label: "Profil", icon: <UserOutlined />, path: "/commercial/profil" });
@@ -102,8 +104,9 @@ export default function CommercialLayout() {
 
   const activeKey = navItems.find((item) => {
     if (item.path === "/commercial") return location.pathname === "/commercial";
-    if (item.key === "campagnes")  return location.pathname.startsWith("/commercial/campagnes");
-    if (item.key === "validation") return location.pathname.startsWith("/commercial/validation");
+    if (item.key === "campagnes")   return location.pathname.startsWith("/commercial/campagnes");
+    if (item.key === "validation")  return location.pathname.startsWith("/commercial/validation");
+    if (item.key === "performance") return location.pathname.startsWith("/commercial/performance");
     return location.pathname.startsWith(item.path);
   })?.key;
 
