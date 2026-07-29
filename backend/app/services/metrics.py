@@ -151,7 +151,9 @@ async def _get_agent_reliability_metrics(
             ).label("avg_duration_s"),
         )
         .join(Campaign, Campaign.id == AgentTask.campaign_id)
-        .where(*task_conditions, AgentTask.status.in_([AgentTaskStatus.DONE, AgentTaskStatus.FAILED]))
+        .where(
+            *task_conditions, AgentTask.status.in_([AgentTaskStatus.DONE, AgentTaskStatus.FAILED])
+        )
         .group_by(AgentTask.agent_name)
     )
     perf_by_agent = {row.agent_name: row for row in (await db.execute(terminal_stmt)).all()}

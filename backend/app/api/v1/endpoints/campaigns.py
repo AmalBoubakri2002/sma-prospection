@@ -1,7 +1,9 @@
 import uuid
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.agents.scoring.decision import decide_status
 from app.agents.veille.sirene import SireneAPIError, SireneClient, SireneConfigError
 from app.api.deps import require_active_user

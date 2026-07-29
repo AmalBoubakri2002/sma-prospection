@@ -46,7 +46,8 @@ class CampaignPipelineState(TypedDict):
     scoring: NotRequired[dict]        # Rapport Agent Scoring
     redaction: NotRequired[dict]      # Rapport Agent Rédaction
     crm: NotRequired[dict]            # Rapport Agent CRM
-    veille_retries: NotRequired[int]      # Nb de relances Veille pour compenser le quota (voir node_check_quota)
+    veille_retries: NotRequired[int]      # Nb de relances Veille pour compenser le quota
+                                           # (voir node_check_quota)
     needs_more_leads: NotRequired[bool]   # Décision du nœud check_quota, lue par le routeur
 
 
@@ -89,7 +90,9 @@ async def node_enrichissement(state: CampaignPipelineState) -> dict:
         try:
             result = await run_enrichissement(db, campaign)
             await update_campaign_status(db, campaign, "scoring_pending")
-            logger.info("[Enrichissement] Terminé — %d leads enrichis", result.get("leads_enrichis", 0))
+            logger.info(
+                "[Enrichissement] Terminé — %d leads enrichis", result.get("leads_enrichis", 0)
+            )
             return {"enrichissement": result}
         except Exception as exc:
             logger.exception("[Enrichissement] Échec")
@@ -114,7 +117,9 @@ async def node_check_quota(state: CampaignPipelineState) -> dict:
         enrichis = counts.get(LeadStatus.ENRICHI, 0)
 
         quota_atteint = enrichis >= campaign.quota
-        stock_epuise = bool(campaign.estimated_prospects) and total_collected >= campaign.estimated_prospects
+        stock_epuise = (
+            bool(campaign.estimated_prospects) and total_collected >= campaign.estimated_prospects
+        )
         retries_epuises = retries >= MAX_VEILLE_RETRIES
         needs_more = not quota_atteint and not stock_epuise and not retries_epuises
 
@@ -216,7 +221,8 @@ async def node_crm(state: CampaignPipelineState) -> dict:
             result = await run_crm(db, campaign)
             await update_campaign_status(db, campaign, "completed")
             logger.info(
-                "[CRM] Terminé — %d leads synchronisés vers Odoo", result.get("leads_synchronises", 0)
+                "[CRM] Terminé — %d leads synchronisés vers Odoo",
+                result.get("leads_synchronises", 0),
             )
             return {"crm": result}
         except Exception as exc:
@@ -246,13 +252,21 @@ _builder.add_node("redaction", node_redaction)
 _builder.add_node("crm", node_crm)
 
 _builder.add_edge(START, "veille")
-_builder.add_conditional_edges("veille",         _or_abort("enrichissement"), {END: END, "enrichissement": "enrichissement"})
-_builder.add_conditional_edges("enrichissement", _or_abort("check_quota"),    {END: END, "check_quota": "check_quota"})
+_builder.add_conditional_edges(
+    "veille", _or_abort("enrichissement"), {END: END, "enrichissement": "enrichissement"}
+)
+_builder.add_conditional_edges(
+    "enrichissement", _or_abort("check_quota"), {END: END, "check_quota": "check_quota"}
+)
 _builder.add_conditional_edges(
     "check_quota", _route_after_quota_check, {END: END, "veille": "veille", "scoring": "scoring"}
 )
-_builder.add_conditional_edges("scoring",        _or_abort("redaction"),      {END: END, "redaction": "redaction"})
-_builder.add_conditional_edges("redaction",      _or_abort("crm"),            {END: END, "crm": "crm"})
+_builder.add_conditional_edges(
+    "scoring", _or_abort("redaction"), {END: END, "redaction": "redaction"}
+)
+_builder.add_conditional_edges(
+    "redaction", _or_abort("crm"), {END: END, "crm": "crm"}
+)
 _builder.add_edge("crm", END)
 
 # ── Compilation paresseuse avec checkpoints PostgreSQL ───────────────────────

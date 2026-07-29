@@ -5,7 +5,7 @@ from app.models.lead import LeadStatus
 
 
 def score_ajuste(score: float, ca: float | int | None, resultat_net: float | int | None) -> float:
-   
+
     if clean_financial_value(ca) is not None:
         return score
     rn = resultat_net
@@ -23,7 +23,9 @@ def score_ajuste(score: float, ca: float | int | None, resultat_net: float | int
 
 
 def decide_status(score: float, score_minimum: float) -> str:
-      return LeadStatus.QUALIFIE if round(score, 2) >= round(score_minimum, 2) else LeadStatus.ECARTE
+      return (
+          LeadStatus.QUALIFIE if round(score, 2) >= round(score_minimum, 2) else LeadStatus.ECARTE
+      )
 
 
 def label_for_score(score: float) -> str:

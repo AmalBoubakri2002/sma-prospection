@@ -34,7 +34,7 @@ def _current_periode(etablissement: dict) -> dict:
 
 
 def current_secteur(etablissement: dict, periode: dict | None = None) -> str | None:
-   
+
     if periode is None:
         periode = _current_periode(etablissement)
     return periode.get("activitePrincipaleEtablissement") or etablissement.get(

@@ -1,7 +1,8 @@
 from typing import Union
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision: str = "d2f8b4c1e9a7"
 down_revision: Union[str, None] = "ea6d3e773d62"

@@ -1,4 +1,5 @@
-"""Worker Pipeline — point d'entrée unique pour les tâches PIPELINE, PIPELINE_RESUME, SCORING, REDACTION et CRM.
+"""Worker Pipeline — point d'entrée unique pour les tâches PIPELINE, PIPELINE_RESUME, SCORING,
+REDACTION et CRM.
 
 L'état du graphe (dont la suspension HITL) est persisté dans PostgreSQL
 (AsyncPostgresSaver, voir pipeline_graph.get_pipeline) : un redémarrage du
@@ -181,7 +182,9 @@ async def _run_manual_agent_task(
             if on_success:
                 await on_success(db, campaign, result)
             await mark_done(db, task, result)
-            logger.info("Tâche %s terminée — campagne %s : %s", task.agent_name, campaign_id, result)
+            logger.info(
+                "Tâche %s terminée — campagne %s : %s", task.agent_name, campaign_id, result
+            )
         except Exception as exc:
             logger.exception("Tâche %s échouée — campagne %s", task.agent_name, campaign_id)
             await db.rollback()
@@ -222,7 +225,11 @@ async def run_redaction_task(task_id: uuid.UUID) -> None:
             await notify_emails_prets(db, campaign.commercial_id, nb)
 
     await _run_manual_agent_task(
-        task_id, _run_redaction_or_raise, "en_attente_validation", "redaction_failed", on_success=_on_success
+        task_id,
+        _run_redaction_or_raise,
+        "en_attente_validation",
+        "redaction_failed",
+        on_success=_on_success,
     )
 
 
@@ -279,7 +286,13 @@ async def main() -> None:
         settings.WORKER_POLL_INTERVAL_SECONDS,
     )
     async with AsyncSessionLocal() as db:
-        for agent in (AgentName.PIPELINE, AgentName.PIPELINE_RESUME, AgentName.SCORING, AgentName.REDACTION, AgentName.CRM):
+        for agent in (
+            AgentName.PIPELINE,
+            AgentName.PIPELINE_RESUME,
+            AgentName.SCORING,
+            AgentName.REDACTION,
+            AgentName.CRM,
+        ):
             recovered = await recover_stuck_running_tasks(db, agent)
             if recovered:
                 logger.warning(

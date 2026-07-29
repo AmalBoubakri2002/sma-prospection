@@ -7,10 +7,10 @@ Create Date: 2026-06-16 14:00:00.000000
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision: str = '91b856ab93fd'
 down_revision: Union[str, None] = 'b3d7f1a9c2e4'
@@ -55,7 +55,9 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['campaign_id'], ['campaigns.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
     )
-    op.create_index(op.f('ix_agent_tasks_campaign_id'), 'agent_tasks', ['campaign_id'], unique=False)
+    op.create_index(
+        op.f('ix_agent_tasks_campaign_id'), 'agent_tasks', ['campaign_id'], unique=False
+    )
     op.create_index(op.f('ix_agent_tasks_agent_name'), 'agent_tasks', ['agent_name'], unique=False)
     op.create_index(op.f('ix_agent_tasks_status'), 'agent_tasks', ['status'], unique=False)
 

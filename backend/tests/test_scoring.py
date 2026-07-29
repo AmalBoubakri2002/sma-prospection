@@ -19,9 +19,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.agents.scoring.decision import confidence_score, decide_status, label_for_score, score_ajuste
+from app.agents.scoring.decision import (
+    confidence_score,
+    decide_status,
+    label_for_score,
+    score_ajuste,
+)
 from app.agents.scoring.feature_builder import build_feature_vector
-from app.agents.scoring.feature_spec import FEATURE_NAMES, TAILLE_MIDPOINT, TAILLE_TO_CODE
+from app.agents.scoring.feature_spec import FEATURE_NAMES, TAILLE_TO_CODE
 from app.core.config import settings
 from app.models.lead import Lead, LeadStatus
 from ml.train_scoring_model import build_features
@@ -97,10 +102,16 @@ def test_build_feature_vector_missing_financials_use_medians():
     assert vec[0, FEATURE_INDEX["a_ca"]] == 0.0
     assert vec[0, FEATURE_INDEX["a_ca_n1"]] == 0.0
     assert vec[0, FEATURE_INDEX["a_resultat_net"]] == 0.0
-    assert vec[0, FEATURE_INDEX["ca_log1p"]] == pytest.approx(math.log1p(medians["ca"]), rel=1e-5)
-    assert vec[0, FEATURE_INDEX["ca_n1_log1p"]] == pytest.approx(math.log1p(medians["ca_n1"]), rel=1e-5)
+    assert vec[0, FEATURE_INDEX["ca_log1p"]] == pytest.approx(
+        math.log1p(medians["ca"]), rel=1e-5
+    )
+    assert vec[0, FEATURE_INDEX["ca_n1_log1p"]] == pytest.approx(
+        math.log1p(medians["ca_n1"]), rel=1e-5
+    )
     assert vec[0, FEATURE_INDEX["marge_nette"]] == pytest.approx(medians["marge_nette"], rel=1e-5)
-    assert vec[0, FEATURE_INDEX["age_entreprise"]] == pytest.approx(medians["age_entreprise"], rel=1e-5)
+    assert vec[0, FEATURE_INDEX["age_entreprise"]] == pytest.approx(
+        medians["age_entreprise"], rel=1e-5
+    )
     assert vec[0, FEATURE_INDEX["croissance_ca"]] == 0.0
     assert vec[0, FEATURE_INDEX["taille_code"]] == 0.0  # "NN" (défaut) → TPE
     assert vec[0, FEATURE_INDEX["secteur_code"]] == -1.0  # secteur inconnu, hors catégories
@@ -116,7 +127,9 @@ def test_build_feature_vector_ca_exactly_zero_treated_as_missing():
     vec = build_feature_vector(lead, config)
 
     assert vec[0, FEATURE_INDEX["a_ca"]] == 0.0
-    assert vec[0, FEATURE_INDEX["ca_log1p"]] == pytest.approx(math.log1p(config["medians"]["ca"]), rel=1e-5)
+    assert vec[0, FEATURE_INDEX["ca_log1p"]] == pytest.approx(
+        math.log1p(config["medians"]["ca"]), rel=1e-5
+    )
 
 
 def test_build_feature_vector_resultat_net_exactly_zero_is_known_value():
@@ -194,7 +207,9 @@ def test_build_feature_vector_known_financials():
     assert vec[0, FEATURE_INDEX["ca_log1p"]] == pytest.approx(math.log1p(5_000_000), rel=1e-5)
     assert vec[0, FEATURE_INDEX["rn_signed_log1p"]] == pytest.approx(math.log1p(300_000), rel=1e-5)
     assert vec[0, FEATURE_INDEX["marge_nette"]] == pytest.approx(300_000 / 5_000_000, rel=1e-5)
-    assert vec[0, FEATURE_INDEX["croissance_ca"]] == pytest.approx((5_000_000 - 4_000_000) / 4_000_000, rel=1e-5)
+    assert vec[0, FEATURE_INDEX["croissance_ca"]] == pytest.approx(
+        (5_000_000 - 4_000_000) / 4_000_000, rel=1e-5
+    )
     assert vec[0, FEATURE_INDEX["taille_code"]] == TAILLE_TO_CODE["31"]
     assert vec[0, FEATURE_INDEX["secteur_code"]] == 0.0  # "62" est à l'index 0
 
@@ -317,7 +332,9 @@ def test_score_ajuste_sans_ca_ni_rn_retire_la_marge_inconnue():
     """Cas réel (Slimpay/Ankorstore/Kit United) : aucune donnée financière —
     score brut au-dessus du seuil de campagne mais reposant sur un CA imputé.
     RN inconnu (pas confirmé négatif) : marge INCONNU, pas la marge maximale."""
-    assert score_ajuste(0.6515, ca=None, resultat_net=None) == pytest.approx(0.6515 - _MARGE_INCONNU)
+    assert score_ajuste(0.6515, ca=None, resultat_net=None) == pytest.approx(
+        0.6515 - _MARGE_INCONNU
+    )
 
 
 def test_score_ajuste_ca_zero_traite_comme_manquant():
@@ -330,8 +347,12 @@ def test_score_ajuste_rn_tres_positif_retire_la_marge_la_plus_faible():
     """Cas réel (Ipsosenso) : CA manquant mais RN réel +1,2M€ (> seuil très
     positif) — pas un lead "sans finances", un lead à données partielles très
     rentable. La marge doit être la plus faible du barème."""
-    assert score_ajuste(0.719, ca=None, resultat_net=1_217_739) == pytest.approx(0.719 - _MARGE_TRES_POSITIF)
-    assert score_ajuste(0.719, ca=0, resultat_net=1_217_739) == pytest.approx(0.719 - _MARGE_TRES_POSITIF)
+    assert score_ajuste(0.719, ca=None, resultat_net=1_217_739) == pytest.approx(
+        0.719 - _MARGE_TRES_POSITIF
+    )
+    assert score_ajuste(0.719, ca=0, resultat_net=1_217_739) == pytest.approx(
+        0.719 - _MARGE_TRES_POSITIF
+    )
 
 
 def test_score_ajuste_rn_positif_modeste_retire_marge_intermediaire():
@@ -339,14 +360,18 @@ def test_score_ajuste_rn_positif_modeste_retire_marge_intermediaire():
     la même indulgence qu'un RN à +1,2M€ — palier intermédiaire, pas le plus bas."""
     assert score_ajuste(0.65, ca=None, resultat_net=50_000) == pytest.approx(0.65 - _MARGE_POSITIF)
     # borne haute incluse dans le palier POSITIF, pas TRES_POSITIF.
-    assert score_ajuste(0.65, ca=None, resultat_net=_SEUIL_TRES_POSITIF) == pytest.approx(0.65 - _MARGE_POSITIF)
+    assert score_ajuste(0.65, ca=None, resultat_net=_SEUIL_TRES_POSITIF) == pytest.approx(
+        0.65 - _MARGE_POSITIF
+    )
 
 
 def test_score_ajuste_rn_tres_negatif_retire_la_marge_la_plus_forte():
     """Un déficit confirmé et significatif (sous le seuil très négatif) court
     plus de risque qu'un lead sans aucune donnée — marge la plus forte du
     barème, pas la même que RN inconnu."""
-    assert score_ajuste(0.65, ca=None, resultat_net=-238_080) == pytest.approx(0.65 - _MARGE_TRES_NEGATIF)
+    assert score_ajuste(0.65, ca=None, resultat_net=-238_080) == pytest.approx(
+        0.65 - _MARGE_TRES_NEGATIF
+    )
 
 
 def test_score_ajuste_rn_negatif_modere_retire_marge_negatif():
@@ -371,9 +396,15 @@ def test_decide_status_compare_le_score_deja_ajuste():
     assert decide_status(0.64, 0.65) == LeadStatus.ECARTE
     # équivalent bout-en-bout : sans CA réel ni RN réel, 65 % brut n'auto-qualifie plus.
     assert decide_status(score_ajuste(0.65, ca=None, resultat_net=None), 0.65) == LeadStatus.ECARTE
-    assert decide_status(score_ajuste(0.65 + _MARGE_INCONNU, ca=None, resultat_net=None), 0.65) == LeadStatus.QUALIFIE
+    assert (
+        decide_status(score_ajuste(0.65 + _MARGE_INCONNU, ca=None, resultat_net=None), 0.65)
+        == LeadStatus.QUALIFIE
+    )
     # avec un RN réel positif modeste, la marge intermédiaire suffit à qualifier plus tôt.
-    assert decide_status(score_ajuste(0.65 + _MARGE_POSITIF, ca=None, resultat_net=1), 0.65) == LeadStatus.QUALIFIE
+    assert (
+        decide_status(score_ajuste(0.65 + _MARGE_POSITIF, ca=None, resultat_net=1), 0.65)
+        == LeadStatus.QUALIFIE
+    )
 
 
 # ── confidence_score : part des données financières réelles vs imputées ────────

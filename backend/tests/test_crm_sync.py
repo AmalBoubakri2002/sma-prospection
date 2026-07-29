@@ -86,7 +86,8 @@ async def test_push_lead_to_odoo_stage_lookup_is_cached_across_calls():
 @pytest.mark.anyio
 async def test_push_lead_to_odoo_sets_user_id_when_commercial_email_matches():
     lead = _make_lead()
-    # stage search → [2] ; user search_read → [{id:7, partner_id:[70,...]}] ; dedup → [] ; create → 99
+    # stage search → [2] ; user search_read → [{id:7, partner_id:[70,...]}] ;
+    # dedup → [] ; create → 99
     execute_kw = AsyncMock(side_effect=[[2], _odoo_user(7, 70), [], 99])
 
     with patch("app.agents.crm.sync.odoo_client.execute_kw", execute_kw):
@@ -117,8 +118,10 @@ async def test_push_lead_to_odoo_retries_user_lookup_after_previous_miss():
     lead1, lead2 = _make_lead(), _make_lead()
     execute_kw = AsyncMock(
         side_effect=[
-            [2], [], [], 1,                    # lead1 : stage, user search_read (vide), dedup, create
-            _odoo_user(7, 70), [], 2,          # lead2 : user search_read (trouvé cette fois), dedup, create
+            # lead1 : stage, user search_read (vide), dedup, create
+            [2], [], [], 1,
+            # lead2 : user search_read (trouvé cette fois), dedup, create
+            _odoo_user(7, 70), [], 2,
         ]
     )
 
@@ -126,7 +129,9 @@ async def test_push_lead_to_odoo_retries_user_lookup_after_previous_miss():
         await push_lead_to_odoo(lead1, commercial_email="commercial@example.com")
         await push_lead_to_odoo(lead2, commercial_email="commercial@example.com")
 
-    user_search_calls = [c for c in execute_kw.call_args_list if c.args[:2] == ("res.users", "search_read")]
+    user_search_calls = [
+        c for c in execute_kw.call_args_list if c.args[:2] == ("res.users", "search_read")
+    ]
     assert len(user_search_calls) == 2  # re-cherché car le 1er essai n'avait rien trouvé
 
     last_create_call = execute_kw.call_args_list[-1]
@@ -175,7 +180,9 @@ async def test_push_and_historize_share_the_odoo_user_cache():
         odoo_lead_id = await push_lead_to_odoo(lead, commercial_email="commercial@example.com")
         await historize_email_in_chatter(odoo_lead_id, "Objet", "Contenu", "commercial@example.com")
 
-    user_search_calls = [c for c in execute_kw.call_args_list if c.args[:2] == ("res.users", "search_read")]
+    user_search_calls = [
+        c for c in execute_kw.call_args_list if c.args[:2] == ("res.users", "search_read")
+    ]
     assert len(user_search_calls) == 1
 
 

@@ -9,7 +9,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.notification_bus import listen_forever
 from app.core.security import hash_password
-from app.db.base import AsyncSessionLocal, Base, engine
+from app.db.base import AsyncSessionLocal, engine
 from app.models import Notification, User  # noqa: F401 — registers all models on Base.metadata
 
 

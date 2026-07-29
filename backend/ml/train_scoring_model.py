@@ -52,7 +52,6 @@ from app.agents.scoring.feature_spec import (  # noqa: E402
     naf_division,
 )
 
-
 # ── Feature engineering ────────────────────────────────────────────────────────
 
 def _naf_division_series(secteur: pd.Series) -> pd.Series:
@@ -179,7 +178,10 @@ def print_calibration_table(y_true: np.ndarray, y_pred: np.ndarray, n_bins: int 
     print(f"\n{'─'*72}")
     print(" Calibration (fidélité du score prédit à score_continu)")
     print(f"{'─'*72}")
-    print(f" {'Décile':>6}  {'Score prédit':>13}  {'Score réel':>10}  {'Delta':>7}  {'Verdict':>7}  Barre")
+    print(
+        f" {'Décile':>6}  {'Score prédit':>13}  {'Score réel':>10}  "
+        f"{'Delta':>7}  {'Verdict':>7}  Barre"
+    )
     print(f"{'─'*72}")
 
     for dec in sorted(df_cal["decile"].unique()):
@@ -189,7 +191,10 @@ def print_calibration_table(y_true: np.ndarray, y_pred: np.ndarray, n_bins: int 
         delta = mean_true - mean_pred
         ok = "✓" if abs(delta) < 0.08 else ("⚠" if abs(delta) < 0.15 else "✗")
         bar = _bar(mean_true)
-        print(f"   {int(dec)+1:>4}   {mean_pred:>13.3f}  {mean_true:>10.3f}  {delta:>+7.3f}  {ok:>7}  {bar}")
+        print(
+            f"   {int(dec)+1:>4}   {mean_pred:>13.3f}  {mean_true:>10.3f}  "
+            f"{delta:>+7.3f}  {ok:>7}  {bar}"
+        )
 
     print(f"{'─'*72}")
     print("  ✓ delta < 8%  |  ⚠ 8–15%  |  ✗ > 15%\n")
@@ -322,7 +327,8 @@ def main(data_path: str | None = None, out_dir: str | None = None) -> None:
         early_stopping_rounds=30,
         random_state=42,
         tree_method="hist",
-        # n_jobs=1 : élimine la non-déterminisme du multi-threading sur "hist" (coût négligeable ici).
+        # n_jobs=1 : élimine la non-déterminisme du multi-threading sur "hist"
+        # (coût négligeable ici).
         n_jobs=1,
         verbosity=0,
     )
@@ -392,7 +398,8 @@ def main(data_path: str | None = None, out_dir: str | None = None) -> None:
     print(f"  RMSE (fidélité, brut)      : {rmse_test_raw:.4f}")
     print(f"  RMSE (fidélité, calibré)   : {rmse_test:.4f}")
     print(f"  R² (calibré)               : {r2_test:.4f}")
-    print(f"  CV-5 RMSE (fidélité) : {np.mean(cv_rmses):.4f} ± {np.std(cv_rmses):.4f}  {'✓ stable' if np.std(cv_rmses) < 0.01 else '⚠ instable'}")
+    stability = "✓ stable" if np.std(cv_rmses) < 0.01 else "⚠ instable"
+    print(f"  CV-5 RMSE (fidélité) : {np.mean(cv_rmses):.4f} ± {np.std(cv_rmses):.4f}  {stability}")
     print(f"  AUC-ROC (indicatif, vs label_scoring seuillé) : {auc_test:.4f}")
     print(f"  Average Precision (indicatif)                 : {ap_test:.4f}")
     print(f"  Arbres utilisés      : {best_n}")
@@ -432,8 +439,14 @@ def main(data_path: str | None = None, out_dir: str | None = None) -> None:
             "cv5_rmse_std": round(float(np.std(cv_rmses)), 4),
             "auc_test_vs_label_scoring": round(float(auc_test), 4),
             "average_precision_test_vs_label_scoring": round(float(ap_test), 4),
-            "score_pred_range_raw": [round(float(y_pred_raw.min()), 3), round(float(y_pred_raw.max()), 3)],
-            "score_pred_range_calibrated": [round(float(y_pred.min()), 3), round(float(y_pred.max()), 3)],
+            "score_pred_range_raw": [
+                round(float(y_pred_raw.min()), 3),
+                round(float(y_pred_raw.max()), 3),
+            ],
+            "score_pred_range_calibrated": [
+                round(float(y_pred.min()), 3),
+                round(float(y_pred.max()), 3),
+            ],
         },
     }
     config_path = out / "feature_config.json"
@@ -446,7 +459,9 @@ def main(data_path: str | None = None, out_dir: str | None = None) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data", default=None, help="CSV d'entrée (défaut: ml/dataset_scoring_real.csv)")
+    parser.add_argument(
+        "--data", default=None, help="CSV d'entrée (défaut: ml/dataset_scoring_real.csv)"
+    )
     parser.add_argument("--out-dir", default=None, help="Dossier artefacts (défaut: models/)")
     args = parser.parse_args()
     main(data_path=args.data, out_dir=args.out_dir)

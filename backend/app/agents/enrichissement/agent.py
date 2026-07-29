@@ -1,4 +1,6 @@
-#Agent Enrichissement : recherche-entreprises.api.gouv.fr + INPI/BODACC (fallback finances,procédures) + DuckDuckGo (site web) + scraping homepage/Playwright (email, téléphone) + Nominatim.
+#Agent Enrichissement : recherche-entreprises.api.gouv.fr + INPI/BODACC (fallback
+# finances,procédures) + DuckDuckGo (site web) + scraping homepage/Playwright (email,
+# téléphone) + Nominatim.
 
 import asyncio
 import logging
@@ -24,7 +26,11 @@ from app.agents.enrichissement.shared import apply_inpi_fallback, compute_score_
 from app.agents.enrichissement.web_search import find_company_website
 from app.models.campaign import Campaign
 from app.models.lead import LeadStatus
-from app.services.lead import get_enriched_fields_by_siret, list_leads_to_enrich, update_lead_enriched
+from app.services.lead import (
+    get_enriched_fields_by_siret,
+    list_leads_to_enrich,
+    update_lead_enriched,
+)
 
 logger = logging.getLogger("agent-enrichissement")
 
@@ -51,7 +57,9 @@ def _has_sufficient_financials(fields: dict, lead) -> bool:
     du statut du lead. ca=0 est traité comme absent (comme ailleurs dans le pipeline),
     resultat_net=0 reste une vraie valeur connue."""
     ca = fields.get("ca") or lead.ca
-    resultat_net = fields.get("resultat_net") if fields.get("resultat_net") is not None else lead.resultat_net
+    resultat_net = (
+        fields.get("resultat_net") if fields.get("resultat_net") is not None else lead.resultat_net
+    )
     return bool(ca) and resultat_net is not None
 
 
@@ -221,7 +229,9 @@ async def _enrich_and_save_one(
             has_data = False
             errored = True
 
-        donnees_financieres_partielles = not errored and not _has_sufficient_financials(fields, lead)
+        donnees_financieres_partielles = not errored and not _has_sufficient_financials(
+            fields, lead
+        )
 
         async with db_lock:
             await update_lead_enriched(db, lead, fields, status=LeadStatus.ENRICHI)

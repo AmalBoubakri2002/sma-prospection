@@ -10,7 +10,6 @@ from app.agents.enrichissement.web_search import (
     find_company_website,
 )
 
-
 # ── _domain_keywords ──────────────────────────────────────────────────────────
 
 def test_domain_keywords_filters_stop_words():

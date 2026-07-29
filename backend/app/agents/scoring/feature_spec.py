@@ -53,13 +53,13 @@ def signed_log1p(x: float | None) -> float:
 
 
 def ca_median_for_taille(medians: dict, taille: str | None) -> float:
-  
+
     group = str(TAILLE_TO_CODE.get(str(taille or "NN"), 0))
     return float(medians.get("ca_par_taille", {}).get(group, medians["ca"]))
 
 
 def clean_financial_value(x: float | int | None) -> float | int | None:
-   
+
     if x is None:
         return None
     if x == 0:

@@ -7,7 +7,6 @@
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -62,14 +61,38 @@ async def test_loop_processes_all_leads_beyond_page_size():
 
     with (
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=fake_list_leads),
-        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock, return_value={}),
-        patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock, return_value={}),
+        patch(
+            "app.agents.enrichissement.agent.get_enriched_fields_by_siret",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.enrich_from_siret",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
+        patch(
+            "app.agents.enrichissement.agent.get_finances_from_siren",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
         patch("app.agents.enrichissement.agent.get_procedure_from_bodacc", new_callable=AsyncMock,
               return_value={"en_procedure_collective": False}),
-        patch("app.agents.enrichissement.agent.find_company_website", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.geocode_address", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.find_company_website",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.scrape_email_from_homepage",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.geocode_address",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock),
     ):
         result = await run_enrichissement(db, campaign)
@@ -89,19 +112,37 @@ async def test_inpi_fallback_used_when_no_ca_from_recherche_entreprises():
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[
             [lead], []
         ]),
-        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.get_enriched_fields_by_siret",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock,
               return_value={"telephone": "0145678900"}),  # pas de CA
         patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock,
               return_value={"ca": 850000, "resultat_net": 42000}) as mock_inpi,
         patch("app.agents.enrichissement.agent.get_procedure_from_bodacc", new_callable=AsyncMock,
               return_value={"en_procedure_collective": False}),
-        patch("app.agents.enrichissement.agent.find_company_website", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.geocode_address", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock) as mock_update,
+        patch(
+            "app.agents.enrichissement.agent.find_company_website",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.scrape_email_from_homepage",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.geocode_address",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock
+        ) as mock_update,
     ):
-        result = await run_enrichissement(db, campaign)
+        await run_enrichissement(db, campaign)
 
     mock_inpi.assert_awaited_once_with("123456789")  # SIREN = 9 premiers chiffres du SIRET
 
@@ -121,17 +162,35 @@ async def test_inpi_called_for_ca_n1_even_when_ca_from_source1():
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[
             [lead], []
         ]),
-        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.get_enriched_fields_by_siret",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock,
               return_value={"ca": 1500000, "resultat_net": 80000}),
         patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock,
               return_value={"ca": 900000, "resultat_net": 30000, "ca_n1": 750000}) as mock_inpi,
         patch("app.agents.enrichissement.agent.get_procedure_from_bodacc", new_callable=AsyncMock,
               return_value={"en_procedure_collective": False}),
-        patch("app.agents.enrichissement.agent.find_company_website", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.geocode_address", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock) as mock_update,
+        patch(
+            "app.agents.enrichissement.agent.find_company_website",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.scrape_email_from_homepage",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.geocode_address",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock
+        ) as mock_update,
     ):
         await run_enrichissement(db, campaign)
 
@@ -169,14 +228,34 @@ async def test_leads_avec_donnees_counter_accurate():
 
     with (
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=fake_list),
-        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.get_enriched_fields_by_siret",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.agents.enrichissement.agent.enrich_from_siret", side_effect=fake_enrich),
-        patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock, return_value={}),
+        patch(
+            "app.agents.enrichissement.agent.get_finances_from_siren",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
         patch("app.agents.enrichissement.agent.get_procedure_from_bodacc", new_callable=AsyncMock,
               return_value={"en_procedure_collective": False}),
-        patch("app.agents.enrichissement.agent.find_company_website", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.geocode_address", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.find_company_website",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.scrape_email_from_homepage",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.geocode_address",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock),
     ):
         result = await run_enrichissement(db, campaign)
@@ -192,8 +271,16 @@ async def test_empty_campaign_returns_zero():
     db = AsyncMock()
 
     with (
-        patch("app.agents.enrichissement.agent.list_leads_to_enrich", new_callable=AsyncMock, return_value=[]),
-        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.list_leads_to_enrich",
+            new_callable=AsyncMock,
+            return_value=[],
+        ),
+        patch(
+            "app.agents.enrichissement.agent.get_enriched_fields_by_siret",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
     ):
         result = await run_enrichissement(db, campaign)
 
@@ -215,19 +302,29 @@ async def test_inpi_ca_n1_propagated_to_fields():
 
     with (
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[[lead], []]),
-        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.get_enriched_fields_by_siret",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock,
               return_value={}),
         patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock,
               return_value={"ca": 500000, "resultat_net": 20000, "ca_n1": 430000}),
         patch("app.agents.enrichissement.agent.get_procedure_from_bodacc", new_callable=AsyncMock,
               return_value={"en_procedure_collective": False}),
-        patch("app.agents.enrichissement.agent.find_company_website", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.find_company_website",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock,
               return_value=None),
         patch("app.agents.enrichissement.agent.geocode_address", new_callable=AsyncMock,
               return_value=None),
-        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock) as mock_update,
+        patch(
+            "app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock
+        ) as mock_update,
     ):
         await run_enrichissement(db, campaign)
 
@@ -254,11 +351,20 @@ async def test_cross_siret_reuse_skips_all_apis():
 
     with (
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[[lead], []]),
-        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock,
-              return_value=cached_data),
-        patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock) as mock_enrich,
-        patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock) as mock_inpi,
-        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock) as mock_update,
+        patch(
+            "app.agents.enrichissement.agent.get_enriched_fields_by_siret",
+            new_callable=AsyncMock,
+            return_value=cached_data,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock
+        ) as mock_enrich,
+        patch(
+            "app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock
+        ) as mock_inpi,
+        patch(
+            "app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock
+        ) as mock_update,
     ):
         result = await run_enrichissement(db, campaign)
 
@@ -306,16 +412,38 @@ async def test_run_enrichissement_scores_lead_without_financials():
 
     with (
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[[lead], []]),
-        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.get_enriched_fields_by_siret",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.agents.enrichissement.agent.enrich_from_siret", new_callable=AsyncMock,
               return_value={"telephone": "0145678900"}),  # pas de CA ni resultat_net
-        patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock, return_value={}),
+        patch(
+            "app.agents.enrichissement.agent.get_finances_from_siren",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
         patch("app.agents.enrichissement.agent.get_procedure_from_bodacc", new_callable=AsyncMock,
               return_value={"en_procedure_collective": False}),
-        patch("app.agents.enrichissement.agent.find_company_website", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.scrape_email_from_homepage", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.geocode_address", new_callable=AsyncMock, return_value=None),
-        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock) as mock_update,
+        patch(
+            "app.agents.enrichissement.agent.find_company_website",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.scrape_email_from_homepage",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.geocode_address",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+        patch(
+            "app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock
+        ) as mock_update,
     ):
         result = await run_enrichissement(db, campaign)
 
@@ -338,13 +466,23 @@ async def test_run_enrichissement_timeout_stays_enrichi_not_ecarte():
 
     with (
         patch("app.agents.enrichissement.agent.list_leads_to_enrich", side_effect=[[lead], []]),
-        patch("app.agents.enrichissement.agent.get_enriched_fields_by_siret", new_callable=AsyncMock, return_value=None),
+        patch(
+            "app.agents.enrichissement.agent.get_enriched_fields_by_siret",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
         patch("app.agents.enrichissement.agent.enrich_from_siret", side_effect=_hang),
-        patch("app.agents.enrichissement.agent.get_finances_from_siren", new_callable=AsyncMock, return_value={}),
+        patch(
+            "app.agents.enrichissement.agent.get_finances_from_siren",
+            new_callable=AsyncMock,
+            return_value={},
+        ),
         patch("app.agents.enrichissement.agent.get_procedure_from_bodacc", new_callable=AsyncMock,
               return_value={"en_procedure_collective": False}),
         patch("app.agents.enrichissement.agent._LEAD_TIMEOUT", 0.05),
-        patch("app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock) as mock_update,
+        patch(
+            "app.agents.enrichissement.agent.update_lead_enriched", new_callable=AsyncMock
+        ) as mock_update,
     ):
         result = await run_enrichissement(db, campaign)
 

@@ -215,7 +215,10 @@ def _reset_token_cache():
 
 @pytest.mark.anyio
 async def test_login_missing_credentials_raises_auth_error():
-    with patch.object(inpi.settings, "INPI_USERNAME", ""), patch.object(inpi.settings, "INPI_PASSWORD", ""):
+    with (
+        patch.object(inpi.settings, "INPI_USERNAME", ""),
+        patch.object(inpi.settings, "INPI_PASSWORD", ""),
+    ):
         with pytest.raises(InpiAuthError, match="INPI_USERNAME"):
             await _login(AsyncMock())
 
@@ -227,7 +230,10 @@ async def test_login_success_caches_token():
     client = AsyncMock()
     client.post = AsyncMock(return_value=fake_response)
 
-    with patch.object(inpi.settings, "INPI_USERNAME", "user"), patch.object(inpi.settings, "INPI_PASSWORD", "pass"):
+    with (
+        patch.object(inpi.settings, "INPI_USERNAME", "user"),
+        patch.object(inpi.settings, "INPI_PASSWORD", "pass"),
+    ):
         token = await _login(client)
 
     assert token == "abc123"
@@ -245,7 +251,10 @@ async def test_login_non_200_raises_auth_error():
     client = AsyncMock()
     client.post = AsyncMock(return_value=fake_response)
 
-    with patch.object(inpi.settings, "INPI_USERNAME", "user"), patch.object(inpi.settings, "INPI_PASSWORD", "pass"):
+    with (
+        patch.object(inpi.settings, "INPI_USERNAME", "user"),
+        patch.object(inpi.settings, "INPI_PASSWORD", "pass"),
+    ):
         with pytest.raises(InpiAuthError, match="401"):
             await _login(client)
 
@@ -257,6 +266,9 @@ async def test_login_response_without_token_field_raises():
     client = AsyncMock()
     client.post = AsyncMock(return_value=fake_response)
 
-    with patch.object(inpi.settings, "INPI_USERNAME", "user"), patch.object(inpi.settings, "INPI_PASSWORD", "pass"):
+    with (
+        patch.object(inpi.settings, "INPI_USERNAME", "user"),
+        patch.object(inpi.settings, "INPI_PASSWORD", "pass"),
+    ):
         with pytest.raises(InpiAuthError, match="token"):
             await _login(client)

@@ -40,8 +40,16 @@ def _patch_db(campaign, total_collected: int, counts: dict[str, int]):
     session_factory = MagicMock(side_effect=_session_cm)
     return (
         patch("app.workers.pipeline_graph.AsyncSessionLocal", session_factory),
-        patch("app.workers.pipeline_graph.count_leads_for_campaign", new_callable=AsyncMock, return_value=total_collected),
-        patch("app.workers.pipeline_graph.count_leads_by_status_for_campaign", new_callable=AsyncMock, return_value=counts),
+        patch(
+            "app.workers.pipeline_graph.count_leads_for_campaign",
+            new_callable=AsyncMock,
+            return_value=total_collected,
+        ),
+        patch(
+            "app.workers.pipeline_graph.count_leads_by_status_for_campaign",
+            new_callable=AsyncMock,
+            return_value=counts,
+        ),
     )
 
 
@@ -129,7 +137,10 @@ def _patch_redaction_db(campaign):
     async def _session_cm():
         yield db
 
-    return patch("app.workers.pipeline_graph.AsyncSessionLocal", MagicMock(side_effect=_session_cm)), db
+    return (
+        patch("app.workers.pipeline_graph.AsyncSessionLocal", MagicMock(side_effect=_session_cm)),
+        db,
+    )
 
 
 @pytest.mark.anyio
@@ -141,10 +152,17 @@ async def test_node_redaction_echec_total_ne_passe_pas_en_attente_validation():
     campaign.id = uuid.uuid4()
     session_patch, _db = _patch_redaction_db(campaign)
 
-    with session_patch, \
-         patch("app.workers.pipeline_graph.run_redaction", new_callable=AsyncMock,
-               return_value={"emails_generes": 0, "leads_erreurs": 12}), \
-         patch("app.workers.pipeline_graph.update_campaign_status", new_callable=AsyncMock) as mock_update:
+    with (
+        session_patch,
+        patch(
+            "app.workers.pipeline_graph.run_redaction",
+            new_callable=AsyncMock,
+            return_value={"emails_generes": 0, "leads_erreurs": 12},
+        ),
+        patch(
+            "app.workers.pipeline_graph.update_campaign_status", new_callable=AsyncMock
+        ) as mock_update,
+    ):
         result = await node_redaction({"campaign_id": str(campaign.id)})
 
     assert "error" in result
@@ -157,10 +175,17 @@ async def test_node_redaction_succes_passe_en_attente_validation():
     campaign.id = uuid.uuid4()
     session_patch, _db = _patch_redaction_db(campaign)
 
-    with session_patch, \
-         patch("app.workers.pipeline_graph.run_redaction", new_callable=AsyncMock,
-               return_value={"emails_generes": 10, "leads_erreurs": 2}), \
-         patch("app.workers.pipeline_graph.update_campaign_status", new_callable=AsyncMock) as mock_update:
+    with (
+        session_patch,
+        patch(
+            "app.workers.pipeline_graph.run_redaction",
+            new_callable=AsyncMock,
+            return_value={"emails_generes": 10, "leads_erreurs": 2},
+        ),
+        patch(
+            "app.workers.pipeline_graph.update_campaign_status", new_callable=AsyncMock
+        ) as mock_update,
+    ):
         result = await node_redaction({"campaign_id": str(campaign.id)})
 
     assert "error" not in result

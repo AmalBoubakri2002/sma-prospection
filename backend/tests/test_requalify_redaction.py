@@ -65,7 +65,8 @@ def _db_returning_leads(leads: list[Lead]) -> AsyncMock:
 async def test_requalify_launches_redaction_for_newly_qualified():
     """Seuil abaissé : l'écarté repasse QUALIFIE → tâche REDACTION créée."""
     campaign = _make_campaign(score_minimum=0.5)
-    lead = _make_lead(score=0.60, status=LeadStatus.ECARTE)  # sous l'ancien seuil, au-dessus du nouveau
+    # sous l'ancien seuil, au-dessus du nouveau
+    lead = _make_lead(score=0.60, status=LeadStatus.ECARTE)
     db = _db_returning_leads([lead])
     create_task = AsyncMock()
 

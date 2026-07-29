@@ -53,6 +53,7 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.3.0",
+    "ruff>=0.8.0",
     # ML training (local seulement, pas en Docker) — scikit-learn est monté en
     # dépendance de prod ci-dessus (nécessaire à l'inférence, pas seulement au
     # training), il ne doit pas rester ici en double.
@@ -65,3 +66,8 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
+
+[tool.ruff.lint.pep8-naming]
+# Convention scikit-learn/numpy pour les matrices de features (X, X_train...) —
+# renommer en minuscule irait à l'encontre de la convention ML standard.
+ignore-names = ["X", "X_train", "X_test", "X_tr", "X_val"]

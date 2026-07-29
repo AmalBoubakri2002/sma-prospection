@@ -1,7 +1,16 @@
 import uuid
 from datetime import date, datetime, timezone
 
-from sqlalchemy import BigInteger, Date, DateTime, Double, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import (
+    BigInteger,
+    Date,
+    DateTime,
+    Double,
+    ForeignKey,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -14,8 +23,10 @@ class LeadStatus:
     COLLECTE = "COLLECTE"
     ENRICHI = "ENRICHI"
     # Deux statuts de rejet distincts pour permettre l'analyse et l'amélioration du système :
-    # - ECARTE : rejet automatique par l'Agent Scoring (score < score_minimum). Récupérable par le commercial.
-    # - REJETE  : rejet humain explicite (commercial). Préservé lors d'une requalification automatique.
+    # - ECARTE : rejet automatique par l'Agent Scoring (score < score_minimum). Récupérable
+    #   par le commercial.
+    # - REJETE  : rejet humain explicite (commercial). Préservé lors d'une requalification
+    #   automatique.
     ECARTE = "ECARTE"
     QUALIFIE = "QUALIFIE"
     EMAIL_GENERE = "EMAIL_GENERE"

@@ -8,8 +8,9 @@ Ajoute taux_completude (Float, nullable) à la table leads.
 Valeur calculée par l'Agent Enrichissement : pourcentage de champs clés renseignés.
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "b5c3d1e8f2a4"
 down_revision = "a1b2c3d4e5f6"

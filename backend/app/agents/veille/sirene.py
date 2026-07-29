@@ -1,7 +1,10 @@
 import asyncio
+
 import httpx
+
 from app.agents.veille.normalizer import current_secteur
 from app.core.config import settings
+
 
 class SireneAPIError(Exception):
     pass
@@ -48,7 +51,7 @@ class SireneClient:
         quota: int,
         exclude_sirets: set[str] | None = None,
     ) -> tuple[list[dict], int]:
-    
+
         if not self.api_key:
             raise SireneConfigError("INSEE_API_KEY non configurée (voir backend/.env)")
 

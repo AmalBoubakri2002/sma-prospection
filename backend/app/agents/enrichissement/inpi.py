@@ -61,7 +61,9 @@ async def _login(client: httpx.AsyncClient) -> str:
             timeout=10.0,
         )
         if response.status_code != 200:
-            raise InpiAuthError(f"Login INPI échoué ({response.status_code}) : {response.text[:200]}")
+            raise InpiAuthError(
+                f"Login INPI échoué ({response.status_code}) : {response.text[:200]}"
+            )
 
         token = response.json().get("token")
         if not token:

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.veille.sirene import SireneClient, SireneAPIError
+from app.agents.veille.sirene import SireneAPIError, SireneClient
 
 
 def _make_response(status_code: int, body: dict) -> MagicMock:

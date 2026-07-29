@@ -1,5 +1,5 @@
 def dedupe(normalized: list[dict], existing_sirets: set[str]) -> list[dict]:
-   
+
     seen = set(existing_sirets)
     deduped: list[dict] = []
     for lead in normalized:

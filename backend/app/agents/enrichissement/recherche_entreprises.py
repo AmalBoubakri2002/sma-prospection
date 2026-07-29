@@ -132,7 +132,8 @@ def extract_dirigeant_principal(result: dict) -> dict:
 
 
 def extract_contact_info(result: dict) -> dict:
-    """Extrait téléphone, site web, géoloc, CA, CA N-1 et résultat net depuis le résultat de l'API."""
+    """Extrait téléphone, site web, géoloc, CA, CA N-1 et résultat net depuis le résultat
+    de l'API."""
     siege = result.get("siege", {})
 
     telephone = siege.get("telephone") or None

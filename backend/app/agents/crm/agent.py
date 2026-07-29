@@ -44,7 +44,7 @@ async def run_crm(db: AsyncSession, campaign: Campaign) -> dict:
 
         for lead in leads:
             try:
-              
+
                 duplicate_id = await find_crm_duplicate(lead)
                 if duplicate_id is not None:
                     await mark_crm_sync_success(db, lead.id, duplicate_id)

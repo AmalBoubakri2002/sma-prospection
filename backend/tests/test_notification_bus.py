@@ -33,7 +33,10 @@ async def test_publish_emits_pg_notify_with_envelope():
 async def test_handle_payload_routes_to_recipient_sockets():
     recipient = uuid.uuid4()
     payload = json.dumps(
-        {"recipient_id": str(recipient), "payload": {"kind": "notification", "data": {"title": "Push"}}}
+        {
+            "recipient_id": str(recipient),
+            "payload": {"kind": "notification", "data": {"title": "Push"}},
+        }
     )
     send = AsyncMock()
 

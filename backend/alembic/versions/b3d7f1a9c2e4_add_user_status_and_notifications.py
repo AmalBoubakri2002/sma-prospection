@@ -7,10 +7,10 @@ Create Date: 2026-06-16 10:00:00.000000
 """
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision: str = 'b3d7f1a9c2e4'
 down_revision: Union[str, None] = None
@@ -19,7 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.add_column('users', sa.Column('status', sa.String(length=20), nullable=False, server_default='ACTIVE'))
+    op.add_column(
+        'users', sa.Column('status', sa.String(length=20), nullable=False, server_default='ACTIVE')
+    )
     op.execute("UPDATE users SET status = CASE WHEN is_active THEN 'ACTIVE' ELSE 'REJECTED' END")
     op.drop_column('users', 'is_active')
 
@@ -37,13 +39,17 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['related_user_id'], ['users.id'], ondelete='SET NULL'),
         sa.PrimaryKeyConstraint('id'),
     )
-    op.create_index(op.f('ix_notifications_recipient_id'), 'notifications', ['recipient_id'], unique=False)
+    op.create_index(
+        op.f('ix_notifications_recipient_id'), 'notifications', ['recipient_id'], unique=False
+    )
 
 
 def downgrade() -> None:
     op.drop_index(op.f('ix_notifications_recipient_id'), table_name='notifications')
     op.drop_table('notifications')
 
-    op.add_column('users', sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.true()))
+    op.add_column(
+        'users', sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.true())
+    )
     op.execute("UPDATE users SET is_active = (status = 'ACTIVE')")
     op.drop_column('users', 'status')

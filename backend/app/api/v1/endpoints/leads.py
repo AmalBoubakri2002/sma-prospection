@@ -43,7 +43,9 @@ class LeadStatsResponse(BaseModel):
     taux_reponse: float | None
 
 
-async def _get_owned_lead(db: AsyncSession, lead_id: uuid.UUID, commercial_id: uuid.UUID) -> Lead | None:
+async def _get_owned_lead(
+    db: AsyncSession, lead_id: uuid.UUID, commercial_id: uuid.UUID
+) -> Lead | None:
     """Renvoie le lead s'il appartient à une campagne de ce commercial, sinon None."""
     result = await db.execute(
         select(Lead)
@@ -118,7 +120,9 @@ async def update_status(
     if data.status == LeadStatus.QUALIFIE:
         campaign = await db.get(Campaign, lead.campaign_id)
         if campaign and campaign.status not in ("running", "scoring_pending", "redaction_pending"):
-            await create_task(db, campaign_id=campaign.id, agent_name=AgentName.REDACTION, payload={})
+            await create_task(
+                db, campaign_id=campaign.id, agent_name=AgentName.REDACTION, payload={}
+            )
             await update_campaign_status(db, campaign, "redaction_pending")
 
     return LeadResponse.model_validate(lead)

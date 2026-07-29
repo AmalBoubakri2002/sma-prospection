@@ -62,6 +62,40 @@ async def test_scrape_email_finds_professional_email():
 
 
 @pytest.mark.anyio
+async def test_scrape_email_strips_mailto_prefix_from_jsonld():
+    # Cas réel constaté en test (efinec.fr, 2026-07-29) : le schema.org
+    # ContactPoint encode "email" comme une URI mailto: complète plutôt
+    # qu'une adresse nue -- sans nettoyage, "mailto:" restait collé au
+    # local-part et produisait une adresse invalide.
+    html = (
+        '<html><body>'
+        '<script type="application/ld+json">'
+        '{"@type": "Organization", "email": "mailto:contact@efinec.fr"}'
+        '</script>'
+        '</body></html>'
+    )
+    mock_client = _make_http_mock(200, html)
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await scrape_email_from_homepage("https://efinec.fr")
+    assert result == "contact@efinec.fr"
+
+
+@pytest.mark.anyio
+async def test_scrape_email_strips_mailto_query_string_from_jsonld():
+    html = (
+        '<html><body>'
+        '<script type="application/ld+json">'
+        '{"@type": "Organization", "email": "mailto:contact@acme.fr?subject=Devis"}'
+        '</script>'
+        '</body></html>'
+    )
+    mock_client = _make_http_mock(200, html)
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        result = await scrape_email_from_homepage("https://acme.fr")
+    assert result == "contact@acme.fr"
+
+
+@pytest.mark.anyio
 async def test_scrape_email_rejects_nonfunctional_prefix():
     # "noreply" est dans _NONFUNCTIONAL_PREFIXES (adresse automatisée) → ignoré
     html = "<p>noreply@acme.fr</p><p>marie.martin@acme.fr</p>"

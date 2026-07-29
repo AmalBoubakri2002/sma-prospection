@@ -52,7 +52,9 @@ async def notify_admins_new_registration(db: AsyncSession, commercial: User) -> 
             recipient_id=admin.id,
             type=NotificationType.REGISTRATION_REQUEST,
             title="Nouvelle demande d'inscription",
-            message=f"{commercial.full_name or commercial.email} souhaite créer un compte commercial.",
+            message=(
+                f"{commercial.full_name or commercial.email} souhaite créer un compte commercial."
+            ),
             related_user_id=commercial.id,
         )
 
@@ -63,7 +65,10 @@ async def notify_account_approved(db: AsyncSession, commercial: User) -> None:
         recipient_id=commercial.id,
         type=NotificationType.ACCOUNT_APPROVED,
         title="Compte approuvé",
-        message="Votre compte a été validé par un administrateur. Vous pouvez maintenant vous connecter.",
+        message=(
+            "Votre compte a été validé par un administrateur. "
+            "Vous pouvez maintenant vous connecter."
+        ),
     )
 
 
@@ -86,7 +91,10 @@ async def notify_emails_prets(
         recipient_id=commercial_id,
         type=NotificationType.EMAILS_PRETS,
         title="Emails prêts à valider",
-        message=f"{nb_emails} email{'s' if nb_emails > 1 else ''} généré{'s' if nb_emails > 1 else ''} — en attente de votre validation.",
+        message=(
+            f"{nb_emails} email{'s' if nb_emails > 1 else ''} "
+            f"généré{'s' if nb_emails > 1 else ''} — en attente de votre validation."
+        ),
     )
 
 
@@ -129,7 +137,9 @@ async def list_notifications(db: AsyncSession, recipient_id: uuid.UUID) -> list[
     return list(result.scalars().all())
 
 
-async def get_notification_by_id(db: AsyncSession, notification_id: uuid.UUID) -> Notification | None:
+async def get_notification_by_id(
+    db: AsyncSession, notification_id: uuid.UUID
+) -> Notification | None:
     result = await db.execute(select(Notification).where(Notification.id == notification_id))
     return result.scalar_one_or_none()
 

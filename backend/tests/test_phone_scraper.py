@@ -10,7 +10,6 @@ from app.agents.enrichissement.phone_scraper import (
     scrape_phone_from_homepage,
 )
 
-
 # ── _normalize_phone ──────────────────────────────────────────────────────────
 
 def test_normalize_phone_local_10_digits():

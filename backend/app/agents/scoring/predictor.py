@@ -89,10 +89,10 @@ _MIN_CONTRIB_SHARE = 0.05
 
 
 def _compute_shap(X: np.ndarray, feature_names: list[str]) -> str:
-   
+
     booster = _model.get_booster()
     dmatrix = xgb.DMatrix(X, feature_names=feature_names)
-    
+
     contribs = booster.predict(dmatrix, pred_contribs=True)
     feature_contribs = contribs[0, :-1]
     total_abs = float(np.abs(feature_contribs).sum())
@@ -125,11 +125,13 @@ def _compute_shap(X: np.ndarray, feature_names: list[str]) -> str:
 
 
 def predict(lead: Lead) -> tuple[float, str | None]:
-   
+
     _load()
     X = build_feature_vector(lead, _config)
     raw = float(np.clip(_model.predict(X)[0], 0.0, 1.0))
-    prob = float(np.clip(_calibrator.predict([raw])[0], 0.0, 1.0)) if _calibrator is not None else raw
+    prob = (
+        float(np.clip(_calibrator.predict([raw])[0], 0.0, 1.0)) if _calibrator is not None else raw
+    )
     try:
         shap_json = _compute_shap(X, _config["feature_names"])
     except Exception as exc:

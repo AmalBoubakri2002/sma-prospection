@@ -13,7 +13,7 @@ from app.services.lead import (
 
 
 async def run_veille(db: AsyncSession, campaign: Campaign) -> dict:
-    
+
     existing_sirets = await get_existing_sirets(db, campaign.id)
 
     usable_count = await count_usable_leads_for_campaign(db, campaign.id)

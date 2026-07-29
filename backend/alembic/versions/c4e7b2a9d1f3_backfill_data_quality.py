@@ -18,7 +18,6 @@ from __future__ import annotations
 from typing import Union
 
 from alembic import op
-import sqlalchemy as sa
 
 revision: str = "c4e7b2a9d1f3"
 down_revision: Union[str, None] = "f1c9a3b8d2e6"
@@ -50,8 +49,13 @@ def upgrade() -> None:
     op.execute(r"""
         UPDATE leads
         SET email = NULL
-        WHERE email ~* '^[a-z0-9]*[-_.]?(spain|espagne|london|berlin|madrid|amsterdam|dubai|singapore|brussels|rome|milan|istanbul|stockholm|oslo|copenhagen|warsaw|vienna|zurich|prague|budapest|uk|us|usa|de|es|it|nl|pt|pl|se|no|dk|fi|be|at|ch|cz|hu)[a-z0-9]*@'
-           OR email ~* '^(spain|espagne|london|berlin|madrid|amsterdam|dubai|singapore|brussels|rome|milan|istanbul|stockholm|oslo|copenhagen|warsaw|vienna|zurich|prague|budapest|uk|us|usa|de|es|it|nl|pt|pl|se|no|dk|fi|be|at|ch|cz|hu)@'
+        WHERE email ~* '^[a-z0-9]*[-_.]?(spain|espagne|london|berlin|madrid|amsterdam|dubai|'
+                       'singapore|brussels|rome|milan|istanbul|stockholm|oslo|copenhagen|warsaw|'
+                       'vienna|zurich|prague|budapest|uk|us|usa|de|es|it|nl|pt|pl|se|no|dk|fi|be|'
+                       'at|ch|cz|hu)[a-z0-9]*@'
+           OR email ~* '^(spain|espagne|london|berlin|madrid|amsterdam|dubai|singapore|brussels|'
+                       'rome|milan|istanbul|stockholm|oslo|copenhagen|warsaw|vienna|zurich|prague|'
+                       'budapest|uk|us|usa|de|es|it|nl|pt|pl|se|no|dk|fi|be|at|ch|cz|hu)@'
     """)
 
     # ── 3. Supprimer la colonne score_intent ─────────────────────────────────

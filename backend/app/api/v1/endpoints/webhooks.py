@@ -1,4 +1,4 @@
-# Webhook Odoo 17 — boucle retour de la synchronisation CRM 
+# Webhook Odoo 17 — boucle retour de la synchronisation CRM
 
 import hmac
 import logging

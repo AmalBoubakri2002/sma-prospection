@@ -37,7 +37,9 @@ async def create_user(
     return user
 
 
-async def list_users(db: AsyncSession, role: str | None = None, status: str | None = None) -> list[User]:
+async def list_users(
+    db: AsyncSession, role: str | None = None, status: str | None = None
+) -> list[User]:
     stmt = select(User).order_by(User.created_at.desc())
     if role:
         stmt = stmt.where(User.role == role)

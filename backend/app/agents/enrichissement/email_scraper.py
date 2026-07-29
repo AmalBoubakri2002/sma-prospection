@@ -131,6 +131,14 @@ _JSONLD_SCRIPT_RE = re.compile(
 _EMAIL_KEYS = frozenset(["email", "contactEmail", "emailAddress"])
 
 
+def _strip_mailto(val: str) -> str:
+    # Certains sites encodent email schema.org sous forme d'URI mailto: plutôt qu'une adresse nue
+    val = val.strip()
+    if val.lower().startswith("mailto:"):
+        val = val[len("mailto:"):]
+    return val.split("?", 1)[0].strip()
+
+
 def _find_email_in_obj(obj: object, depth: int = 0) -> str | None:
     """Cherche récursivement un email dans un objet JSON-LD / Microdata."""
     if depth > 6:
@@ -144,7 +152,7 @@ def _find_email_in_obj(obj: object, depth: int = 0) -> str | None:
         for key in _EMAIL_KEYS:
             val = obj.get(key)
             if isinstance(val, str) and "@" in val:
-                return val.strip()
+                return _strip_mailto(val)
         for val in obj.values():
             if isinstance(val, (dict, list)):
                 result = _find_email_in_obj(val, depth + 1)

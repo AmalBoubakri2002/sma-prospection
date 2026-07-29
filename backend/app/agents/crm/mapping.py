@@ -35,7 +35,9 @@ def build_odoo_payload(lead: Lead) -> dict:
         "x_sma_pc_id": str(lead.id),
         "x_siret": lead.siret,
         "x_taille_entreprise": lead.taille_entreprise,
-        "x_date_creation_entreprise": lead.date_creation.isoformat() if lead.date_creation else None,
+        "x_date_creation_entreprise": (
+            lead.date_creation.isoformat() if lead.date_creation else None
+        ),
         "x_ca": lead.ca,
         "x_resultat_net": lead.resultat_net,
     }

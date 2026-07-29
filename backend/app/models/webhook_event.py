@@ -19,7 +19,9 @@ class WebhookEventResult:
 
 class WebhookEvent(Base):
 
-#Chaque événement est conservé avec son payload brut et le résultat de son traitement : c'est la piste d'audit de la boucle retour CRM, et le point de départ du diagnostic quand un statut Odoo ne se reflète pas côté SMA-PC."""
+#Chaque événement est conservé avec son payload brut et le résultat de son traitement : c'est
+# la piste d'audit de la boucle retour CRM, et le point de départ du diagnostic quand un
+# statut Odoo ne se reflète pas côté SMA-PC."""
 
     __tablename__ = "webhook_events"
 

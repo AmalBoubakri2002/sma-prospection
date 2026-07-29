@@ -44,11 +44,11 @@ _RESULT_A_RE = re.compile(r'class="result__a"[^>]*href="(https?://[^"]+)"')
 def _domain_keywords(company_name: str) -> list[str]:
     """Extrait les mots significatifs du nom d'entreprise pour valider le domaine."""
     # Retire les mots génériques (formes juridiques, prépositions)
-    _STOP = {"consulting", "france", "groupe", "group", "solutions", "services",
+    _stop = {"consulting", "france", "groupe", "group", "solutions", "services",
               "sas", "sarl", "sa", "de", "du", "et", "le", "la", "les", "management",
               "technology", "technologies", "and", "ile", "idf"}
     words = re.findall(r"[a-z0-9]+", company_name.lower())
-    return [w for w in words if w not in _STOP and len(w) >= 3]
+    return [w for w in words if w not in _stop and len(w) >= 3]
 
 
 def _root_domain(hostname: str) -> str:

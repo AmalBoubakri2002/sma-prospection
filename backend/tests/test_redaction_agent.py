@@ -17,7 +17,6 @@ import pytest
 from app.agents.redaction.agent import _build_context, run_redaction
 from app.models.lead import Lead, LeadStatus
 
-
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _make_lead(
@@ -156,8 +155,12 @@ async def test_run_redaction_genere_email_pour_lead_qualifie():
     )
 
     with (
-        patch("app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock) as mock_list,
-        patch("app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock) as mock_update,
+        patch(
+            "app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock
+        ) as mock_list,
+        patch(
+            "app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock
+        ) as mock_update,
         patch("app.agents.redaction.agent.AsyncOpenAI") as mock_client_cls,
         patch("app.agents.redaction.agent.settings") as mock_settings,
         patch("app.agents.redaction.agent.asyncio.sleep", new_callable=AsyncMock),
@@ -197,8 +200,12 @@ async def test_run_redaction_continue_apres_erreur_unitaire():
     api_response = _mock_api_response("Objet test", _valid_contenu("Alpha SAS"))
 
     with (
-        patch("app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock) as mock_list,
-        patch("app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock),
+        patch(
+            "app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock
+        ) as mock_list,
+        patch(
+            "app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock
+        ),
         patch("app.agents.redaction.agent.AsyncOpenAI") as mock_client_cls,
         patch("app.agents.redaction.agent.settings") as mock_settings,
         patch("app.agents.redaction.agent.asyncio.sleep", new_callable=AsyncMock),
@@ -245,8 +252,12 @@ async def test_run_redaction_json_mal_forme():
     bad_response.choices = [choice]
 
     with (
-        patch("app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock) as mock_list,
-        patch("app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock) as mock_update,
+        patch(
+            "app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock
+        ) as mock_list,
+        patch(
+            "app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock
+        ) as mock_update,
         patch("app.agents.redaction.agent.AsyncOpenAI") as mock_client_cls,
         patch("app.agents.redaction.agent.settings") as mock_settings,
         patch("app.agents.redaction.agent.asyncio.sleep", new_callable=AsyncMock),
@@ -290,7 +301,9 @@ async def test_run_redaction_aucun_lead():
     db = AsyncMock()
 
     with (
-        patch("app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock) as mock_list,
+        patch(
+            "app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock
+        ) as mock_list,
         patch("app.agents.redaction.agent.AsyncOpenAI") as mock_client_cls,
         patch("app.agents.redaction.agent.settings") as mock_settings,
     ):
@@ -318,8 +331,12 @@ async def test_run_redaction_bascule_sur_modele_fallback():
     api_response = _mock_api_response("Objet test", _valid_contenu("TechCorp SAS"))
 
     with (
-        patch("app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock) as mock_list,
-        patch("app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock),
+        patch(
+            "app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock
+        ) as mock_list,
+        patch(
+            "app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock
+        ),
         patch("app.agents.redaction.agent.AsyncOpenAI") as mock_client_cls,
         patch("app.agents.redaction.agent.settings") as mock_settings,
         patch("app.agents.redaction.agent.asyncio.sleep", new_callable=AsyncMock),
@@ -358,8 +375,12 @@ async def test_run_redaction_ne_boucle_pas_indefiniment_si_lead_reste_qualifie()
     lead = _make_lead()
 
     with (
-        patch("app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock) as mock_list,
-        patch("app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock),
+        patch(
+            "app.agents.redaction.agent.list_leads_to_redact", new_callable=AsyncMock
+        ) as mock_list,
+        patch(
+            "app.agents.redaction.agent.update_lead_email_genere", new_callable=AsyncMock
+        ),
         patch("app.agents.redaction.agent.AsyncOpenAI") as mock_client_cls,
         patch("app.agents.redaction.agent.settings") as mock_settings,
         patch("app.agents.redaction.agent.asyncio.sleep", new_callable=AsyncMock),

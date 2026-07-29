@@ -13,8 +13,10 @@ Pipeline de génération du dataset de scoring B2B — 3 étapes, une par sous-c
 Ordre d'exécution habituel : generate → patch (optionnel) → impute → train_scoring_model.py
 
 Usage (depuis la racine du repo) :
-    python backend/ml/dataset_pipeline.py generate --sirene backend/ml/data/StockEtablissement_utf8.csv --n 20000
-    python backend/ml/dataset_pipeline.py patch --csv backend/ml/dataset_scoring_real.csv --scrape-web
+    python backend/ml/dataset_pipeline.py generate \
+        --sirene backend/ml/data/StockEtablissement_utf8.csv --n 20000
+    python backend/ml/dataset_pipeline.py patch --csv backend/ml/dataset_scoring_real.csv \
+        --scrape-web
     python backend/ml/dataset_pipeline.py impute --csv backend/ml/dataset_scoring_real.csv
 
 Les 3 étapes vivent dans un seul fichier (regroupées le 2026-07-04) car `patch`
@@ -51,7 +53,10 @@ from app.agents.enrichissement.recherche_entreprises import (  # noqa: E402
     extract_contact_info,
     extract_dirigeant_principal,
 )
-from app.agents.enrichissement.shared import apply_inpi_fallback, compute_score_exploitabilite  # noqa: E402
+from app.agents.enrichissement.shared import (  # noqa: E402
+    apply_inpi_fallback,
+    compute_score_exploitabilite,
+)
 from app.agents.enrichissement.web_search import find_company_website  # noqa: E402
 
 logging.basicConfig(
@@ -497,7 +502,9 @@ def _compute_raw_score(df: pd.DataFrame) -> np.ndarray:
 
     # Rampe linéaire continue : clamp((marge/MARGE_RAMP_CEILING)*20, 0, 20).
     # Marge inconnue -> crédit neutre (pas de fallback signe, voir docstring).
-    marge_scaled = (ratio / MARGE_RAMP_CEILING * MARGE_POINTS_MAX).clip(lower=0.0, upper=MARGE_POINTS_MAX)
+    marge_scaled = (ratio / MARGE_RAMP_CEILING * MARGE_POINTS_MAX).clip(
+        lower=0.0, upper=MARGE_POINTS_MAX
+    )
     score_marge = np.where(ratio_known, marge_scaled.fillna(0.0), MARGE_POINTS_UNKNOWN)
 
     age = df["age_entreprise"]
@@ -512,7 +519,9 @@ def _compute_raw_score(df: pd.DataFrame) -> np.ndarray:
     ca = df["ca"]
     ca_valid = ca.notna() & (ca > 0)
     log_lo, log_hi = math.log(CA_LOG_LOW), math.log(CA_LOG_HIGH)
-    ca_ratio = ((np.log(ca.clip(lower=1.0)) - log_lo) / (log_hi - log_lo)).clip(lower=0.0, upper=1.0)
+    ca_ratio = ((np.log(ca.clip(lower=1.0)) - log_lo) / (log_hi - log_lo)).clip(
+        lower=0.0, upper=1.0
+    )
     # Échelle log entre CA_LOG_LOW (0 pt) et CA_LOG_HIGH (20 pts pleins) —
     # barème fourni. CA inconnu -> crédit neutre (10 pts, non spécifié par le
     # barème fourni, choisi par cohérence avec le traitement RN/marge ci-dessus).
@@ -712,7 +721,10 @@ async def _patch_one(
                     nom_complet = (result.get("nom_complet") or "").strip()
                     if nom_complet:
                         company_fallback = nom_complet
-                        if pd.isna(row.get("company_name")) or not str(row.get("company_name") or "").strip():
+                        company_name_missing = pd.isna(row.get("company_name")) or not str(
+                            row.get("company_name") or ""
+                        ).strip()
+                        if company_name_missing:
                             updates["company_name"] = nom_complet
             except (RechercheEntreprisesError, httpx.HTTPError) as exc:
                 log.debug("recherche-entreprises %s : %s", row["siret"], exc)
@@ -721,7 +733,12 @@ async def _patch_one(
         # ── Site web via DuckDuckGo si toujours absent ──────────────────────
         site_web = updates.get("site_web") or row.get("site_web")
         if scrape_web and (pd.isna(site_web) or not site_web):
-            company = str(row.get("company_name") or "").strip() or updates.get("company_name") or company_fallback or ""
+            company = (
+                str(row.get("company_name") or "").strip()
+                or updates.get("company_name")
+                or company_fallback
+                or ""
+            )
             if company:
                 try:
                     found = await find_company_website(company, "")
@@ -996,7 +1013,7 @@ def _cmd_impute(args: argparse.Namespace) -> None:
     # notna().mean(), PAS mean() — confondre les deux fait planter le
     # rapport pour "ca" (moyenne ~150M€ interprétée comme un pourcentage,
     # donnant une barre de plusieurs milliards de caractères).
-    _BINARY_RATE_FIELDS = {"has_email", "has_phone", "has_website"}
+    _binary_rate_fields = {"has_email", "has_phone", "has_website"}
 
     for field, label in [
         ("ca",              "CA"),
@@ -1010,7 +1027,7 @@ def _cmd_impute(args: argparse.Namespace) -> None:
     ]:
         if field not in df.columns:
             continue
-        if field in _BINARY_RATE_FIELDS:
+        if field in _binary_rate_fields:
             rate = df[field].mean()
         else:
             rate = df[field].notna().mean()
@@ -1033,23 +1050,45 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_gen = sub.add_parser("generate", help="Échantillonnage SIRENE + enrichissement API")
-    p_gen.add_argument("--sirene", required=True, help="Chemin vers StockEtablissement_utf8.csv (INSEE)")
+    p_gen.add_argument(
+        "--sirene", required=True, help="Chemin vers StockEtablissement_utf8.csv (INSEE)"
+    )
     p_gen.add_argument("--n", type=int, default=20_000, help="Nombre de leads cible")
     p_gen.add_argument("--seed", type=int, default=42)
-    p_gen.add_argument("--concurrency", type=int, default=5, help="Nombre de requêtes API parallèles (défaut: 5)")
-    p_gen.add_argument("--cache", default=None, help="Fichier cache JSON (défaut: même dossier que --out, siret_cache.json)")
-    p_gen.add_argument("--out", default=None, help="CSV de sortie (défaut: ml/dataset_scoring_real.csv)")
-    p_gen.add_argument("--no-enrich", action="store_true", help="Ignore l'étape d'enrichissement API (utile pour tester le sampling seul)")
+    p_gen.add_argument(
+        "--concurrency", type=int, default=5, help="Nombre de requêtes API parallèles (défaut: 5)"
+    )
+    p_gen.add_argument(
+        "--cache",
+        default=None,
+        help="Fichier cache JSON (défaut: même dossier que --out, siret_cache.json)",
+    )
+    p_gen.add_argument(
+        "--out", default=None, help="CSV de sortie (défaut: ml/dataset_scoring_real.csv)"
+    )
+    p_gen.add_argument(
+        "--no-enrich",
+        action="store_true",
+        help="Ignore l'étape d'enrichissement API (utile pour tester le sampling seul)",
+    )
     p_gen.set_defaults(func=_cmd_generate)
 
-    p_patch = sub.add_parser("patch", help="Complète les champs manquants d'un CSV existant (mis à jour sur place)")
+    p_patch = sub.add_parser(
+        "patch", help="Complète les champs manquants d'un CSV existant (mis à jour sur place)"
+    )
     p_patch.add_argument("--csv", default="backend/ml/dataset_scoring_real.csv")
     p_patch.add_argument("--concurrency", type=int, default=5)
-    p_patch.add_argument("--scrape-web", action="store_true", help="Active le scraping email/téléphone via les sites web (lent)")
+    p_patch.add_argument(
+        "--scrape-web",
+        action="store_true",
+        help="Active le scraping email/téléphone via les sites web (lent)",
+    )
     p_patch.add_argument("--seed", type=int, default=42)
     p_patch.set_defaults(func=_cmd_patch)
 
-    p_imp = sub.add_parser("impute", help="Impute has_email/has_phone/has_website (mis à jour sur place)")
+    p_imp = sub.add_parser(
+        "impute", help="Impute has_email/has_phone/has_website (mis à jour sur place)"
+    )
     p_imp.add_argument("--csv", default="backend/ml/dataset_scoring_real.csv")
     p_imp.add_argument("--seed", type=int, default=42)
     p_imp.set_defaults(func=_cmd_impute)

@@ -1,4 +1,5 @@
-#Push d'un lead vers Odoo — dédup par x_sma_pc_id (write si déjà connu, sinon create) puis historisation de l'e-mail envoyé dans le chatter de la fiche Odoo.
+#Push d'un lead vers Odoo — dédup par x_sma_pc_id (write si déjà connu, sinon create) puis
+# historisation de l'e-mail envoyé dans le chatter de la fiche Odoo.
 
 import html
 
@@ -9,7 +10,8 @@ from app.services import odoo_client
 # on les pousse directement dans l'étape "Qualified" plutôt que de les laisser
 _QUALIFIED_STAGE_NAME = "Qualified"
 
-# Cache mémoire : le stage_id et les comptes Odoo par email changent rarement, pas la peine de refaire un search Odoo à chaque lead.
+# Cache mémoire : le stage_id et les comptes Odoo par email changent rarement, pas la peine
+# de refaire un search Odoo à chaque lead.
 _cached_qualified_stage_id: int | None | bool = None
 # {email: (user_id, partner_id)} — un seul aller-retour Odoo sert à la fois pour
 # le champ user_id (Vendeur) et pour author_id (auteur du message dans le chatter).
@@ -27,7 +29,10 @@ async def _get_qualified_stage_id() -> int | None:
 
 
 async def _get_odoo_user(email: str | None) -> tuple[int, int] | None:
-    # Retrouve (user_id, partner_id) du compte Odoo correspondant au commercial SMA-PC par e-mail. user_id sert au champ Vendeur ; partner_id sert d'auteur pour les messages postés dans le chatter (sans ça, tout apparaît posté par le compte technique API, quel que soit le vendeur assigné au lead).
+    # Retrouve (user_id, partner_id) du compte Odoo correspondant au commercial SMA-PC par
+    # e-mail. user_id sert au champ Vendeur ; partner_id sert d'auteur pour les messages
+    # postés dans le chatter (sans ça, tout apparaît posté par le compte technique API, quel
+    # que soit le vendeur assigné au lead).
 
     if not email:
         return None

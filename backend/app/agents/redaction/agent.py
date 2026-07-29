@@ -200,7 +200,7 @@ async def run_redaction(db: AsyncSession, campaign: Campaign) -> dict:
             "NVIDIA_API_KEY non configurée — impossible de lancer l'Agent Rédaction."
         )
 
-   
+
     client = AsyncOpenAI(
         base_url=settings.NVIDIA_BASE_URL,
         api_key=settings.NVIDIA_API_KEY,
@@ -218,7 +218,7 @@ async def _redact_campaign(
 ) -> dict:
     total_generes = 0
     total_erreurs = 0
-    _MAX_ATTEMPTS = 3
+    _max_attempts = 3
 
     # Exclu du run courant pour ne pas boucler indéfiniment ; reste QUALIFIE pour le prochain run.
     failed_this_run: set = set()
@@ -235,7 +235,7 @@ async def _redact_campaign(
             success = False
             last_exc: Exception | None = None
 
-            for attempt in range(1, _MAX_ATTEMPTS + 1):
+            for attempt in range(1, _max_attempts + 1):
                 # Bascule sur le modèle de secours dès la 2e tentative si configuré.
                 model = settings.REDACTION_MODEL
                 if attempt > 1 and settings.REDACTION_FALLBACK_MODEL:
@@ -248,7 +248,7 @@ async def _redact_campaign(
                     violations = _validate_email(objet, contenu, lead)
                     if violations:
                         raise ValueError(
-                            f"Garde-fous échoués (tentative {attempt}/{_MAX_ATTEMPTS}) : "
+                            f"Garde-fous échoués (tentative {attempt}/{_max_attempts}) : "
                             + " | ".join(violations)
                         )
 
@@ -263,10 +263,10 @@ async def _redact_campaign(
 
                 except Exception as exc:
                     last_exc = exc
-                    if attempt < _MAX_ATTEMPTS:
+                    if attempt < _max_attempts:
                         logger.debug(
                             "Tentative %d/%d échouée pour %s (modèle %s) : %s — nouvelle tentative",
-                            attempt, _MAX_ATTEMPTS, lead.siret, model, exc,
+                            attempt, _max_attempts, lead.siret, model, exc,
                         )
                     # Backoff linéaire entre tentatives.
                     if settings.REDACTION_REQUEST_DELAY_SECONDS > 0:
@@ -275,7 +275,7 @@ async def _redact_campaign(
             if not success:
                 logger.warning(
                     "Rédaction abandonnée pour %s après %d tentatives : %s",
-                    lead.siret, _MAX_ATTEMPTS, last_exc,
+                    lead.siret, _max_attempts, last_exc,
                 )
                 total_erreurs += 1
                 failed_this_run.add(lead.id)
