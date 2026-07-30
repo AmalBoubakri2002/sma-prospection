@@ -3,6 +3,5 @@
 # usage direct (enregistrement des modèles au chargement de l'addon) et
 # __manifest__.py qui doit rester un littéral dict nu pour être chargé par
 # Odoo (ast.literal_eval). Ces conventions ne correspondent pas au lint
-# Python générique et le module n'est de toute façon pas couvert par la CI
-# (qui ne lint que backend/, voir .github/workflows/backend-ci.yml).
+# Python générique.
 extend-exclude = ["odoo"]

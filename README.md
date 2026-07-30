@@ -1,7 +1,5 @@
 # SMA Prospection — ProspectAI
 
-[![Backend CI](https://github.com/AmalBoubakri2002/sma-prospection/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/AmalBoubakri2002/sma-prospection/actions/workflows/backend-ci.yml)
-
 Plateforme de prospection B2B avec orchestration multi-agent (LangGraph) : de la
 recherche d'entreprises à la synchronisation CRM, avec validation humaine (HITL)
 avant l'envoi des emails.
@@ -78,11 +76,6 @@ Sans secret configuré côté backend, l'endpoint répond 503 (fermé par défau
 - Orchestrateur de reprise automatique des tâches en échec
 - Scoring explicable : valeurs SHAP calculées par l'Agent Scoring, affichées au commercial (fiche lead + file de validation)
 - Endpoint `/metrics` + tableau de bord KPIs (funnel, temps de cycle par étape, fiabilité par agent, taux de synchro CRM)
-
-### À venir
-- RGPD : endpoint d'effacement (`DELETE /leads/{id}/gdpr`), traçabilité du consentement, chiffrement des données personnelles au repos
-- Registre et réentraînement versionné du modèle de scoring (MLflow) — l'entraînement actuel (`backend/ml/train_scoring_model.py`) est manuel, sans comparaison automatique avant promotion
-- Refresh token (seul l'access token JWT 60 min existe actuellement)
 
 ## Démarrage rapide
 
