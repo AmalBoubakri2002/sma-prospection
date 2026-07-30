@@ -15,7 +15,7 @@ from app.services.agent_task import create_task
 from app.services.campaign import update_campaign_status
 
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [orchestrateur] %(message)s"
+    level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s"
 )
 logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 logger = logging.getLogger("orchestrateur")

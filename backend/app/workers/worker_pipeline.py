@@ -33,7 +33,7 @@ from app.services.notification import notify_emails_prets
 from app.workers.pipeline_graph import CampaignPipelineState, get_pipeline
 
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [worker-pipeline] %(message)s"
+    level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s"
 )
 logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
 logger = logging.getLogger("worker-pipeline")
