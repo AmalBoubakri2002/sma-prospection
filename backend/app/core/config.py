@@ -50,6 +50,13 @@ class Settings(BaseSettings):
 
     # Workers agents
     WORKER_POLL_INTERVAL_SECONDS: float = 5.0
+    # True sur un hébergement à service unique (ex : Render free tier) où les
+    # workers worker_pipeline/orchestrateur ne peuvent pas tourner dans des
+    # conteneurs séparés — ils sont alors lancés comme tâches asyncio internes
+    # au processus API (voir app/main.py::lifespan). False par défaut pour ne
+    # pas dupliquer le traitement des tâches avec les conteneurs docker-compose
+    # dédiés en local.
+    RUN_WORKERS_IN_PROCESS: bool = False
 
     # INPI RNE — comptes annuels (data.inpi.fr). Pas de clé API statique :
     # l'authentification se fait par login (email/mot de passe du compte

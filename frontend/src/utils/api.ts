@@ -1,8 +1,13 @@
 import axios from "axios";
 import { useAuthStore } from "@/stores/authStore";
 
+// En dev, le proxy Vite (voir vite.config.ts) redirige "/api" vers le backend
+// local : baseURL relative suffit. En prod (frontend et backend sur des
+// domaines différents), VITE_API_URL doit pointer vers l'origine du backend.
+const backendOrigin = import.meta.env.VITE_API_URL ?? "";
+
 const api = axios.create({
-  baseURL: "/api/v1",
+  baseURL: `${backendOrigin}/api/v1`,
   headers: { "Content-Type": "application/json" },
 });
 

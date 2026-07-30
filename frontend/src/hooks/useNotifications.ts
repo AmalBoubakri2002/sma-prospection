@@ -45,8 +45,13 @@ export function useNotifications(
 
     const connect = () => {
       if (cancelled) return;
-      const proto = window.location.protocol === "https:" ? "wss" : "ws";
-      socket = new WebSocket(`${proto}://${window.location.host}/api/v1/notifications/ws?token=${encodeURIComponent(token)}`);
+      // Même logique que utils/api.ts : en prod, le backend vit sur une autre
+      // origine que le frontend (VITE_API_URL), donc le host du WS ne peut pas
+      // être déduit de window.location comme en dev (proxy Vite same-origin).
+      const backendUrl = import.meta.env.VITE_API_URL;
+      const host = backendUrl ? new URL(backendUrl).host : window.location.host;
+      const proto = (backendUrl ? new URL(backendUrl).protocol : window.location.protocol) === "https:" ? "wss" : "ws";
+      socket = new WebSocket(`${proto}://${host}/api/v1/notifications/ws?token=${encodeURIComponent(token)}`);
 
       socket.onmessage = (event) => {
         try {

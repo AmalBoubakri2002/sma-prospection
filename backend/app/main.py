@@ -11,6 +11,7 @@ from app.core.notification_bus import listen_forever
 from app.core.security import hash_password
 from app.db.base import AsyncSessionLocal, engine
 from app.models import Notification, User  # noqa: F401 — registers all models on Base.metadata
+from app.workers import orchestrateur, worker_pipeline
 
 
 async def _seed_admin() -> None:
@@ -37,11 +38,16 @@ async def lifespan(app: FastAPI):
     await _seed_admin()
     # Bus de notifications : le processus API écoute PostgreSQL (LISTEN/NOTIFY)
     # et pousse vers les WebSockets — les workers, eux, ne font que publier.
-    listener = asyncio.create_task(listen_forever())
+    tasks = [asyncio.create_task(listen_forever())]
+    if settings.RUN_WORKERS_IN_PROCESS:
+        tasks.append(asyncio.create_task(worker_pipeline.main()))
+        tasks.append(asyncio.create_task(orchestrateur.main()))
     yield
-    listener.cancel()
-    with suppress(asyncio.CancelledError):
-        await listener
+    for task in tasks:
+        task.cancel()
+    for task in tasks:
+        with suppress(asyncio.CancelledError):
+            await task
     await engine.dispose()
 
 
