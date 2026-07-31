@@ -9,6 +9,7 @@ car l'initialisation du checkpointer (pool + setup des tables) est asynchrone.
 import logging
 import uuid
 from typing import NotRequired, TypedDict
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.graph import END, START, StateGraph
@@ -285,7 +286,17 @@ async def get_pipeline():
         return _pipeline
 
     # psycopg attend un DSN "postgresql://", pas le dialecte SQLAlchemy+asyncpg.
-    conninfo = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+    # Attention : le paramètre SSL n'a pas le même nom selon le driver — asyncpg
+    # accepte "ssl" (voir app/db/base.py), mais psycopg (libpq) exige "sslmode"
+    # et rejette "ssl" ("invalid URI query parameter"), faisant échouer toute
+    # connexion en boucle (constaté en prod le 2026-07-31 : campagnes bloquées,
+    # timeout du pool après 30s à chaque tentative).
+    parts = urlsplit(settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://"))
+    query = [
+        (k, v) if k != "ssl" else ("sslmode", v)
+        for k, v in parse_qsl(parts.query)
+    ]
+    conninfo = urlunsplit(parts._replace(query=urlencode(query)))
     # autocommit + dict_row : prérequis documentés d'AsyncPostgresSaver ;
     # prepare_threshold=0 évite les prepared statements (incompatibles pgbouncer).
     _pool = AsyncConnectionPool(
