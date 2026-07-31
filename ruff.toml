@@ -1,4 +1,3 @@
-[tool.ruff]
 # odoo/ suit les conventions du framework Odoo — imports de sous-modules sans
 # usage direct (enregistrement des modèles au chargement de l'addon) et
 # __manifest__.py qui doit rester un littéral dict nu pour être chargé par

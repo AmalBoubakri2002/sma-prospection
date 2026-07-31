@@ -89,8 +89,9 @@ Sans secret configuré côté backend, l'endpoint répond 503 (fermé par défau
 ### 1. Configuration
 
 ```bash
-cp .env.example .env
-# Remplir les variables dans .env
+cp .env.example .env                       # identifiants des conteneurs Postgres/Odoo
+cp backend/.env.example backend/.env
+# Remplir les variables dans .env et backend/.env
 ```
 
 ### 2. Base de données & services
@@ -126,6 +127,12 @@ App : `http://localhost:5173`
 
 Compte admin par défaut : `admin@prospectai.fr` / `Admin1234!`
 
+## Déploiement
+
+Configuration de déploiement (Render + Neon + Cloudflare Pages) : voir
+[`deployment/`](deployment/README.md). C'est un exercice personnel séparé du
+reste du projet.
+
 ## Structure
 
 ```
@@ -157,6 +164,7 @@ sma-prospection/
 │   ├── schemas/                # Pydantic
 │   └── services/              # Logique métier (leads, campagnes, Odoo client…)
 ├── odoo/addons/                # Module CRM Odoo custom (champs x_score_ia, x_label_ia, x_sma_pc_id…)
+├── deployment/                  # Render + Neon + Cloudflare Pages (exercice perso, isolé du reste)
 ├── docker-compose.yml          # PostgreSQL, Odoo 17, worker pipeline, orchestrateur
 └── .env.example
 ```
