@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import axios from "axios";
 import {
   Typography, Button, Tag, Spin, Tooltip, message,
   InputNumber, Popconfirm, Drawer, Input, Progress,
@@ -140,6 +141,9 @@ function LeadDrawer({ lead, onClose, onValidate, onSaveEmail }: LeadDrawerProps)
       setContenu(lead.contenu_email ?? "");
       setEditMode(false);
     }
+    // Ne dépend que de l'identité du lead : un rafraîchissement en arrière-plan
+    // qui renvoie le même lead avec une nouvelle référence ne doit pas écraser
+    // une édition en cours.
   }, [lead?.id]);
 
   if (!lead) return null;
@@ -438,8 +442,9 @@ export default function CampaignLeadsPage() {
       const res = await api.post<Campaign>(`/campaigns/${campaignId}/validate`);
       setCampaign(res.data);
       message.success("Envoi vers Odoo lancé — les leads validés apparaîtront sous peu dans le CRM.");
-    } catch (err: any) {
-      message.error(err?.response?.data?.detail ?? "Erreur lors du lancement de l'envoi vers Odoo");
+    } catch (err) {
+      const detail = axios.isAxiosError(err) ? err.response?.data?.detail : undefined;
+      message.error(detail ?? "Erreur lors du lancement de l'envoi vers Odoo");
     } finally {
       setSendingToOdoo(false);
     }

@@ -2,13 +2,6 @@
 
 > Plateforme de prospection B2B pilotée par des agents IA orchestrés avec LangGraph : de la détection d'entreprises cibles à la synchronisation CRM, avec validation humaine (HITL) avant l'envoi des emails.
 
-![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=black)
-![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
-
 ## Sommaire
 
 - [Aperçu](#aperçu)

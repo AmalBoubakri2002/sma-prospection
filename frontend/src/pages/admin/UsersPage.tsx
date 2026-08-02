@@ -9,6 +9,7 @@ import {
   SearchOutlined, TeamOutlined,
 } from "@ant-design/icons";
 import type { ColumnsType } from "antd/es/table";
+import axios from "axios";
 import api from "@/utils/api";
 import { C, S, R } from "@/styles/tokens";
 
@@ -69,6 +70,8 @@ export default function UsersPage() {
     }
   };
 
+  // Chargement unique au montage — fetchUsers est recréée à chaque rendu mais
+  // ne dépend que du singleton `api`, l'inclure redéclencherait l'effet en boucle.
   useEffect(() => { fetchUsers(); }, []);
 
   const handleCreate = async (values: CreateForm) => {
@@ -79,8 +82,12 @@ export default function UsersPage() {
       setCreateOpen(false);
       createForm.resetFields();
       fetchUsers();
-    } catch (err: any) {
-      message.error(err.response?.status === 409 ? "Cet email est déjà utilisé" : "Erreur lors de la création");
+    } catch (err) {
+      message.error(
+        axios.isAxiosError(err) && err.response?.status === 409
+          ? "Cet email est déjà utilisé"
+          : "Erreur lors de la création"
+      );
     } finally {
       setCreateLoading(false);
     }

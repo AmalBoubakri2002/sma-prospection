@@ -130,6 +130,9 @@ function LeadDetailDrawer({
     setObjet(state.lead.objet_email ?? "");
     setContenu(state.lead.contenu_email ?? "");
     setEditMode(state.editMode);
+    // Ne dépend que de l'identité du lead + editMode : un rafraîchissement en
+    // arrière-plan qui renvoie le même lead avec une nouvelle référence ne
+    // doit pas écraser une édition en cours.
   }, [state?.lead.id, state?.editMode]);
 
   if (!state) return null;

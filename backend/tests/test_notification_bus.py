@@ -64,6 +64,7 @@ async def test_create_notification_publishes_before_commit():
     """La notification est publiée sur le bus DANS la transaction (avant le
     commit) : PostgreSQL la délivre au commit, y compris depuis un worker."""
     db = AsyncMock()
+    db.add = MagicMock()  # Session.add() est synchrone en SQLAlchemy
 
     async def _flush():
         # Simule les défauts appliqués par SQLAlchemy au flush

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Form, Input, Button, Typography, App, Result } from "antd";
 import { Link, useNavigate } from "react-router-dom";
+import axios from "axios";
 import api from "@/utils/api";
 import { C, S, R } from "@/styles/tokens";
 
@@ -23,9 +24,9 @@ export default function RegisterPage() {
     try {
       await api.post("/auth/register", values);
       setSubmitted(true);
-    } catch (err: any) {
+    } catch (err) {
       message.error(
-        err.response?.status === 409
+        axios.isAxiosError(err) && err.response?.status === 409
           ? "Cet email est déjà utilisé"
           : "Erreur lors de l'inscription"
       );

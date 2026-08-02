@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Form, Input, Button, Typography, App } from "antd";
 import { Link, useNavigate } from "react-router-dom";
+import axios from "axios";
 import { useAuthStore } from "@/stores/authStore";
 import api from "@/utils/api";
 import type { AuthUser } from "@/stores/authStore";
@@ -56,8 +57,9 @@ export default function LoginPage() {
 
       setAuth(tokenData.access_token, user);
       navigate(user.role === "admin" ? "/admin" : "/commercial");
-    } catch (err: any) {
-      message.error(err.response?.data?.detail ?? "Email ou mot de passe incorrect");
+    } catch (err) {
+      const detail = axios.isAxiosError(err) ? err.response?.data?.detail : undefined;
+      message.error(detail ?? "Email ou mot de passe incorrect");
     } finally {
       setLoading(false);
     }
